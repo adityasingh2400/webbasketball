@@ -20,6 +20,7 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
   const animProgress = useRef(0);
   const animating = useRef(false);
   const prevTrigger = useRef(false);
+  const basePositions = useRef<Float32Array | null>(null);
 
   const { geometry, material } = useMemo(() => {
     const positions: number[] = [];
@@ -63,6 +64,10 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
     return { geometry: geom, material: mat };
   }, [rimCenter]);
 
+  if (!basePositions.current && geometry.getAttribute('position')) {
+    basePositions.current = Float32Array.from(geometry.getAttribute('position').array);
+  }
+
   useFrame((_, delta) => {
     if (triggerSwish && !prevTrigger.current) {
       animating.current = true;
@@ -74,10 +79,11 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
     animProgress.current += delta * 3;
 
     const posAttr = netRef.current.geometry.getAttribute('position');
-    if (posAttr) {
+    const base = basePositions.current;
+    if (posAttr && base) {
       const wave = Math.sin(animProgress.current * Math.PI) * 0.05;
       for (let i = 0; i < posAttr.count; i++) {
-        const baseY = posAttr.getY(i);
+        const baseY = base[i * 3 + 1];
         posAttr.setY(i, baseY + wave * Math.sin(i * 0.5));
       }
       posAttr.needsUpdate = true;

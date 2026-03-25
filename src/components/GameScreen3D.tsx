@@ -111,6 +111,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const [isDribbling, setIsDribbling] = useState(false);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
   const [ballState, setBallState] = useState<BallHandlingState>('IDLE');
   const [webcamActive, setWebcamActive] = useState(false);
   const [shotMeterValue, setShotMeterValue] = useState(0);
@@ -118,6 +119,9 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const [shotResult, setShotResult] = useState<string | null>(null);
   const shotMeterValueRef = useRef(0);
   const [netSwish, setNetSwish] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(mode === 'timed' ? 60 : null);
+  const [gameOver, setGameOver] = useState(false);
+  const hasAttemptedShot = useRef(false);
 
   const ballSM = useRef(new BallStateMachine());
   const shotArc = useRef(new ShotArc());
@@ -250,6 +254,21 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   }, [handleKeyDown, handleKeyUp]);
 
   useEffect(() => {
+    if (mode !== 'timed' || gameOver) return;
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev === null || prev <= 0) {
+          clearInterval(interval);
+          setGameOver(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [mode, gameOver]);
+
+  useEffect(() => {
     let lastTime = performance.now();
     let rafHandle = 0;
     let running = true;
@@ -353,16 +372,24 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         if (arcState.landed) {
           if (arcState.madeBasket) {
             setScore(s => s + 1);
-            setStreak(s => s + 1);
-            setShotResult(arcState.hitRim ? 'Bank!' : 'Swish!');
+            setStreak(s => {
+              const newStreak = s + 1;
+              setBestStreak(prev => Math.max(prev, newStreak));
+              return newStreak;
+            });
+            setShotResult(arcState.hitRim || arcState.hitBackboard ? 'Bank!' : 'Swish!');
             setNetSwish(true);
             setTimeout(() => setNetSwish(false), 500);
             sm.forceTransition('DEAD');
           } else {
+            if (mode === 'streak' && hasAttemptedShot.current && streak > 0) {
+              setGameOver(true);
+            }
             setStreak(0);
             setShotResult(arcState.hitRim ? 'Rim Out' : arcState.hitBackboard ? 'Off Board' : 'Airball');
             sm.forceTransition('BOUNCE');
           }
+          hasAttemptedShot.current = true;
         }
       } else {
         setAnimationState(config.playerAnim);
@@ -468,6 +495,74 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
           animation: 'fadeSlideUp 1.5s ease-out forwards',
         }}>
           {shotResult}
+        </div>
+      )}
+
+      {/* Timer (timed mode) */}
+      {timeRemaining !== null && (
+        <div style={{
+          position: 'absolute',
+          top: 20,
+          left: 20,
+          color: timeRemaining <= 10 ? '#ff4444' : 'white',
+          fontFamily: "'Bebas Neue', Arial, sans-serif",
+          fontSize: '36px',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+          background: 'rgba(0,0,0,0.3)',
+          padding: '4px 16px',
+          borderRadius: '8px',
+        }}>
+          {timeRemaining}s
+        </div>
+      )}
+
+      {/* Game Over overlay */}
+      {gameOver && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10,
+        }}>
+          <div style={{
+            color: 'white',
+            fontFamily: "'Bebas Neue', Arial, sans-serif",
+            fontSize: '72px',
+            textShadow: '3px 3px 6px rgba(0,0,0,0.6)',
+          }}>
+            Game Over
+          </div>
+          <div style={{
+            color: '#ff6b35',
+            fontFamily: "'Bebas Neue', Arial, sans-serif",
+            fontSize: '48px',
+            marginTop: 12,
+          }}>
+            Score: {score} | Best Streak: {bestStreak}
+          </div>
+          <button
+            onClick={() => {
+              onGameEnd?.(score, bestStreak);
+              onBack?.();
+            }}
+            style={{
+              marginTop: 24,
+              padding: '12px 32px',
+              fontSize: '20px',
+              fontFamily: "'DM Sans', Arial, sans-serif",
+              background: '#ff6b35',
+              color: 'white',
+              border: 'none',
+              borderRadius: '10px',
+              cursor: 'pointer',
+            }}
+          >
+            Back to Menu
+          </button>
         </div>
       )}
 
