@@ -1,4 +1,4 @@
-import { Suspense, useRef, useCallback } from 'react';
+import { Suspense, useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Sky, Environment as DreiEnvironment } from '@react-three/drei';
 import { EffectComposer, Bloom, N8AO, ToneMapping, SMAA } from '@react-three/postprocessing';
@@ -103,12 +103,14 @@ function SceneContent({
 
   const shouldTrackHand = animationState === 'dribbling' || animationState === 'idle' || animationState === 'gathering';
 
-  if (!shouldTrackHand) {
-    isInFlight.current = true;
-  }
-  if (animationState === 'dribbling' || animationState === 'idle') {
-    isInFlight.current = false;
-  }
+  useEffect(() => {
+    if (!shouldTrackHand) {
+      isInFlight.current = true;
+    }
+    if (animationState === 'dribbling' || animationState === 'idle') {
+      isInFlight.current = false;
+    }
+  }, [shouldTrackHand, animationState]);
 
   const handleHandPosition = useCallback((worldPos: THREE.Vector3) => {
     handBallPos.current = [worldPos.x, worldPos.y, worldPos.z];

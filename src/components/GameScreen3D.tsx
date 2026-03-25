@@ -14,7 +14,6 @@ interface GameScreen3DProps {
   onGameEnd?: (score: number, streak: number) => void;
 }
 
-const SMOOTHING = 0.12;
 const AUTO_WALK_SPEED = 1.2;
 const HOOP_Z = -13;
 const STOP_DISTANCE = 6;
@@ -343,8 +342,9 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         sm.update(dt, kbInput);
       }
 
-      smoothedPlayerPos.current.x = lerp(smoothedPlayerPos.current.x, targetX, SMOOTHING);
-      smoothedPlayerPos.current.z = lerp(smoothedPlayerPos.current.z, targetZ, SMOOTHING);
+      const smoothFactor = 1 - Math.exp(-8 * dt);
+      smoothedPlayerPos.current.x = lerp(smoothedPlayerPos.current.x, targetX, smoothFactor);
+      smoothedPlayerPos.current.z = lerp(smoothedPlayerPos.current.z, targetZ, smoothFactor);
 
       smoothedPlayerPos.current.x = Math.max(-COURT_HALF_W, Math.min(COURT_HALF_W, smoothedPlayerPos.current.x));
       smoothedPlayerPos.current.z = Math.max(COURT_Z_MIN, Math.min(COURT_Z_MAX, smoothedPlayerPos.current.z));

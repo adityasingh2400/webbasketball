@@ -208,13 +208,14 @@ function Crowd({ basePosition, rows, seatsPerRow, rowSpacing, seatSpacing, facin
   const groupRef = useRef<THREE.Group>(null);
 
   const spectators = useMemo(() => {
-    const result: { pos: [number, number, number]; seed: number }[] = [];
+    const result: { pos: [number, number, number]; seed: number; row: number }[] = [];
     for (let row = 0; row < rows; row++) {
       for (let seat = 0; seat < seatsPerRow; seat++) {
         if (Math.random() < 0.12) continue;
         result.push({
           pos: [(seat - seatsPerRow / 2) * seatSpacing + (Math.random() - 0.5) * 0.1, row * 0.5, -row * rowSpacing],
           seed: row * seatsPerRow + seat + Math.random() * 0.01,
+          row,
         });
       }
     }
@@ -225,7 +226,7 @@ function Crowd({ basePosition, rows, seatsPerRow, rowSpacing, seatSpacing, facin
     if (!groupRef.current) return;
     const t = state.clock.elapsedTime;
     groupRef.current.children.forEach((child, i) => {
-      const rowIdx = Math.floor(i / seatsPerRow);
+      const rowIdx = spectators[i]?.row ?? 0;
       child.rotation.z = Math.sin(t * 0.8 + rowIdx * 1.2) * 0.02;
       child.rotation.x = Math.cos(t * 0.5 + rowIdx * 0.8) * 0.01;
     });
@@ -311,6 +312,11 @@ function PalmTree({ position }: { position: [number, number, number] }) {
     Array.from({ length: 8 }, () => `hsl(${100 + Math.random() * 40}, ${50 + Math.random() * 25}%, ${28 + Math.random() * 15}%)`),
   []);
 
+  const frondDroops = useMemo(
+    () => frondColors.map(() => 0.5 + Math.random() * 0.4),
+    [frondColors],
+  );
+
   return (
     <group ref={groupRef} position={position}>
       {Array.from({ length: 5 }).map((_, i) => {
@@ -326,7 +332,7 @@ function PalmTree({ position }: { position: [number, number, number] }) {
       })}
       {frondColors.map((color, i) => {
         const angle = (i / 8) * Math.PI * 2;
-        const droop = 0.5 + Math.random() * 0.4;
+        const droop = frondDroops[i];
         return (
           <group key={i} position={[lean * height * 0.3, height, 0]} rotation={[droop, angle, 0]}>
             <mesh position={[0, 0, 0.8]} rotation={[0.2, 0, 0]}>
@@ -360,6 +366,15 @@ function Beach() {
     waveRef.current.position.z = Math.cos(t * 0.2) * 0.2;
   });
 
+  const rocks = useMemo(() => [
+    [-1, 0.05, 3], [-3, 0.04, -6], [-2, 0.06, -12], [1, 0.03, 8], [-4, 0.05, 1],
+  ].map(([x, y, z], i) => ({
+    pos: [x, y, z] as [number, number, number],
+    rot: [Math.random() * Math.PI, Math.random() * Math.PI, 0] as [number, number, number],
+    size: 0.1 + Math.random() * 0.12,
+    color: `hsl(30, ${10 + i * 5}%, ${50 + i * 5}%)`,
+  })), []);
+
   return (
     <group position={[-18, 0, -5]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2, -0.01, 0]}>
@@ -386,10 +401,10 @@ function Beach() {
         <meshStandardMaterial color="#d0eaf4" roughness={0.3} transparent opacity={0.45} />
       </mesh>
 
-      {[[-1, 0.05, 3], [-3, 0.04, -6], [-2, 0.06, -12], [1, 0.03, 8], [-4, 0.05, 1]].map(([x, y, z], i) => (
-        <mesh key={i} position={[x, y, z]} rotation={[Math.random(), Math.random(), 0]} castShadow>
-          <dodecahedronGeometry args={[0.1 + Math.random() * 0.12, 0]} />
-          <meshStandardMaterial color={`hsl(30, ${10 + i * 5}%, ${50 + i * 5}%)`} roughness={0.95} />
+      {rocks.map((rock, i) => (
+        <mesh key={i} position={rock.pos} rotation={rock.rot} castShadow>
+          <dodecahedronGeometry args={[rock.size, 0]} />
+          <meshStandardMaterial color={rock.color} roughness={0.95} />
         </mesh>
       ))}
 
