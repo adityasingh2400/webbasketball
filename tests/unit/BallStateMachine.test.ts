@@ -11,6 +11,7 @@ function makeInput(overrides: Partial<BallInput> = {}): BallInput {
     handSide: 'right',
     released: false,
     timeSinceStateEnter: 0,
+    twoGateRelease: false,
     ...overrides,
   };
 }
@@ -137,23 +138,23 @@ describe('BallStateMachine', () => {
       expect(sm.getState()).toBe('GATHER_HIGH');
     });
 
-    it('GATHER_HIGH → SHOOTING on release', () => {
+    it('GATHER_HIGH → SHOOTING on two-gate release', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('GATHER_HIGH');
 
-      sm.update(0.016, makeInput({ released: true }));
+      sm.update(0.016, makeInput({ twoGateRelease: true }));
       expect(sm.getState()).toBe('SHOOTING');
       expect(sm.isShooting()).toBe(true);
     });
 
-    it('GATHER_HIGH → SHOOTING on finger extension', () => {
+    it('GATHER_HIGH → SHOOTING on finger extension with release', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
 
-      sm.update(0.016, makeInput({ fingerExtension: 0.15 }));
+      sm.update(0.016, makeInput({ fingerExtension: 0.15, released: true }));
       expect(sm.getState()).toBe('SHOOTING');
     });
 
@@ -161,7 +162,7 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
-      sm.update(0.016, makeInput({ released: true }));
+      sm.update(0.016, makeInput({ twoGateRelease: true }));
       expect(sm.getState()).toBe('SHOOTING');
 
       for (let i = 0; i < 12; i++) sm.update(0.016, makeInput());
@@ -172,12 +173,15 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
-      sm.update(0.016, makeInput({ released: true }));
+      sm.update(0.016, makeInput({ twoGateRelease: true }));
       for (let i = 0; i < 12; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('FOLLOW_THROUGH');
 
-      for (let i = 0; i < 30; i++) sm.update(0.016, makeInput({ released: true }));
-      expect(sm.getState()).toBe('IDLE');
+      const transitions: string[] = [];
+      const unsub = sm.onTransition((_from, to) => { transitions.push(to); });
+      for (let i = 0; i < 30; i++) sm.update(0.016, makeInput());
+      unsub();
+      expect(transitions).toContain('IDLE');
     });
   });
 

@@ -44,6 +44,7 @@ export interface BallInput {
   handSide: 'left' | 'right';
   released: boolean;
   timeSinceStateEnter: number;
+  twoGateRelease: boolean;
 }
 
 const CROSSOVER_VELOCITY_THRESHOLD = 0.5;
@@ -308,7 +309,7 @@ const TRANSITIONS: Record<string, TransitionCondition[]> = {
 
   GATHER_LOW: [],
   GATHER_HIGH: [
-    { to: 'SHOOTING', when: (i) => i.released || i.fingerExtension > RELEASE_EXTENSION_THRESHOLD, priority: 10 },
+    { to: 'SHOOTING', when: (i) => i.twoGateRelease || (i.released && i.fingerExtension > RELEASE_EXTENSION_THRESHOLD), priority: 10 },
   ],
 
   SHOOTING: [],

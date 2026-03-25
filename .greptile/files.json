@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "description": "Project knowledge base — architecture overview, conventions, gotchas, and where to look for each task"
+    },
+    {
+      "path": "src/types/index.ts",
+      "description": "All shared TypeScript type definitions for the project"
+    },
+    {
+      "path": "src/engine/BallStateMachine.ts",
+      "description": "19-state ball handling finite state machine with priority-based transitions — the core game logic"
+    }
+  ]
+}

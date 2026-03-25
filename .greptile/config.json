@@ -1,0 +1,74 @@
+{
+  "strictness": 1,
+  "commentTypes": ["logic", "syntax", "style", "info"],
+  "triggerOnUpdates": true,
+  "statusCheck": true,
+  "ignorePatterns": "node_modules/**\ndist/**\npackage-lock.json\n*.md",
+  "summarySection": {
+    "included": true,
+    "collapsible": false,
+    "defaultOpen": true
+  },
+  "issuesTableSection": {
+    "included": true,
+    "collapsible": false,
+    "defaultOpen": true
+  },
+  "confidenceScoreSection": {
+    "included": true,
+    "collapsible": false,
+    "defaultOpen": true
+  },
+  "fixWithAI": true,
+  "instructions": "This is a webcam-controlled 3D basketball game built with React Three Fiber, TypeScript strict mode, and MediaPipe hand tracking. Review every file thoroughly. Flag ALL issues you find — we want zero remaining problems. Focus especially on: runtime bugs, state management issues, memory leaks, animation/physics correctness, React hook dependency arrays, Three.js resource disposal, and TypeScript strictness violations.",
+  "rules": [
+    {
+      "id": "no-singleton-engine",
+      "rule": "Do not use singleton pattern for game engine classes. This project uses React hooks + state + R3F useFrame for the game loop, not singleton orchestrators.",
+      "scope": ["src/engine/**"],
+      "severity": "high"
+    },
+    {
+      "id": "no-pixi",
+      "rule": "Do not import or reference pixi.js or any 2D rendering. This project is 3D-only using React Three Fiber.",
+      "scope": ["src/**"],
+      "severity": "high"
+    },
+    {
+      "id": "dispose-three-resources",
+      "rule": "All Three.js geometries, materials, and textures must be disposed on component unmount to prevent memory leaks.",
+      "scope": ["src/r3f/**"],
+      "severity": "high"
+    },
+    {
+      "id": "no-per-frame-allocation",
+      "rule": "Do not allocate new THREE.Vector3, THREE.Quaternion, or other objects inside useFrame or render loops. Pre-allocate as refs.",
+      "scope": ["src/r3f/**"],
+      "severity": "medium"
+    },
+    {
+      "id": "hook-deps-correct",
+      "rule": "All useEffect, useCallback, and useMemo dependency arrays must include all referenced values. Use refs to break unnecessary re-subscriptions for values that change frequently.",
+      "scope": ["src/**"],
+      "severity": "high"
+    },
+    {
+      "id": "two-gate-shot",
+      "rule": "Shot detection must require BOTH hand above shoulder (position gate) AND wrist flick (velocity gate). Single-condition triggers are bugs.",
+      "scope": ["src/engine/input/**"],
+      "severity": "high"
+    },
+    {
+      "id": "no-ts-ignore",
+      "rule": "Do not use @ts-ignore, @ts-expect-error, or 'as any' type casts. Fix the types properly.",
+      "scope": ["src/**"],
+      "severity": "high"
+    },
+    {
+      "id": "frame-rate-independent",
+      "rule": "All animations and physics must use deltaTime, not frame count. Values like 'smoothing *= 0.9' per frame are frame-rate dependent bugs.",
+      "scope": ["src/**"],
+      "severity": "medium"
+    }
+  ]
+}
