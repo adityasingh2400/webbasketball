@@ -1,7 +1,7 @@
-export { default as GameCanvas } from './GameCanvas';
-export { default as Court } from './Court';
-export { default as Ball } from './Ball';
-export { default as Hoop } from './Hoop';
-export { default as Player } from './Player';
-export { default as Lighting } from './Lighting';
-export { default as ThirdPersonCamera } from './ThirdPersonCamera';
+export { GameCanvas } from './GameCanvas';
+export { Court } from './Court';
+export { Ball } from './Ball';
+export { Hoop } from './Hoop';
+export { Player } from './Player';
+export { Lighting } from './Lighting';
+export { ThirdPersonCamera } from './ThirdPersonCamera';

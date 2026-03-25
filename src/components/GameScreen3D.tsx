@@ -15,6 +15,10 @@ const SMOOTHING = 0.12;
 const AUTO_WALK_SPEED = 1.2;
 const HOOP_Z = -13;
 const STOP_DISTANCE = 6;
+const SHOT_METER_SPEED_MIN = 1;
+const SHOT_METER_SPEED_MAX = 4;
+const SHOT_METER_RAMP_TIME = 2;
+const SWEET_SPOT_SIZE = 0.15;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -36,7 +40,6 @@ function drawHandSkeleton(
   height: number,
 ) {
   ctx.clearRect(0, 0, width, height);
-
   ctx.strokeStyle = '#00ff88';
   ctx.lineWidth = 2;
   for (const [a, b] of HAND_CONNECTIONS) {
@@ -48,13 +51,55 @@ function drawHandSkeleton(
     ctx.lineTo((1 - lb.x) * width, lb.y * height);
     ctx.stroke();
   }
-
   ctx.fillStyle = '#00ff88';
   for (const lm of landmarks) {
     ctx.beginPath();
     ctx.arc((1 - lm.x) * width, lm.y * height, 3, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+function ShotMeter({ value, isVisible }: { value: number; isVisible: boolean }) {
+  if (!isVisible) return null;
+
+  const sweetSpotStart = 0.5 - SWEET_SPOT_SIZE / 2;
+  const sweetSpotEnd = 0.5 + SWEET_SPOT_SIZE / 2;
+  const inSweetSpot = value >= sweetSpotStart && value <= sweetSpotEnd;
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: '50%',
+      bottom: 120,
+      transform: 'translateX(-50%)',
+      width: 200,
+      height: 16,
+      background: 'rgba(0,0,0,0.6)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      border: '2px solid rgba(255,255,255,0.3)',
+    }}>
+      <div style={{
+        position: 'absolute',
+        left: `${sweetSpotStart * 100}%`,
+        width: `${SWEET_SPOT_SIZE * 100}%`,
+        height: '100%',
+        background: 'rgba(0,255,136,0.3)',
+      }} />
+      <div style={{
+        position: 'absolute',
+        left: `${value * 100}%`,
+        top: 0,
+        width: 4,
+        height: '100%',
+        background: inSweetSpot ? '#00ff88' : '#ff6b35',
+        borderRadius: 2,
+        transform: 'translateX(-2px)',
+        boxShadow: inSweetSpot ? '0 0 8px #00ff88' : '0 0 6px #ff6b35',
+        transition: 'background 0.1s',
+      }} />
+    </div>
+  );
 }
 
 export default function GameScreen3D({ onBack }: GameScreen3DProps) {
@@ -66,6 +111,9 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
   const [streak, setStreak] = useState(0);
   const [ballState, setBallState] = useState<BallHandlingState>('IDLE');
   const [webcamActive, setWebcamActive] = useState(false);
+  const [shotMeterValue, setShotMeterValue] = useState(0);
+  const [shotMeterVisible, setShotMeterVisible] = useState(false);
+  const [shotResult, setShotResult] = useState<string | null>(null);
 
   const ballSM = useRef(new BallStateMachine());
   const shotArc = useRef(new ShotArc());
@@ -74,6 +122,8 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gatherStartTime = useRef(0);
+  const shotMeterStopped = useRef<number | null>(null);
 
   const { startWebcam, stopWebcam } = useWebcam();
   const {
@@ -119,11 +169,21 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
     }
   }, [stopTracking, stopWebcam]);
 
-  // Transition listener for shot launch and state display
   useEffect(() => {
     const sm = ballSM.current;
     const unsub = sm.onTransition((from, to) => {
       setBallState(to);
+
+      if (to === 'GATHER_LOW') {
+        gatherStartTime.current = performance.now();
+        shotMeterStopped.current = null;
+        setShotMeterVisible(true);
+      }
+
+      if (to === 'SHOOTING' && (from === 'GATHER_HIGH' || from === 'GATHER_LOW')) {
+        shotMeterStopped.current = shotMeterValue;
+        setShotMeterVisible(false);
+      }
 
       if (to === 'FOLLOW_THROUGH' && from === 'SHOOTING') {
         const pos: [number, number, number] = [
@@ -133,30 +193,42 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         ];
         const hand = getHandData();
         const power = Math.min(1, Math.abs(hand.velocity.y) * 2);
-        shotArc.current.launch(pos, Math.max(0.4, power));
+
+        const sweetSpotStart = 0.5 - SWEET_SPOT_SIZE / 2;
+        const sweetSpotEnd = 0.5 + SWEET_SPOT_SIZE / 2;
+        const stoppedValue = shotMeterStopped.current ?? 0.5;
+        let accuracyBonus = 0;
+        if (stoppedValue >= sweetSpotStart && stoppedValue <= sweetSpotEnd) {
+          accuracyBonus = 0.2;
+        } else {
+          accuracyBonus = -Math.abs(stoppedValue - 0.5) * 0.4;
+        }
+
+        shotArc.current.launch(pos, Math.max(0.4, power), accuracyBonus);
       }
 
       if (to === 'SHOOTING' || to === 'FOLLOW_THROUGH') {
         setAnimationState('shooting');
       }
 
+      if (!['GATHER_LOW', 'GATHER_HIGH'].includes(to)) {
+        setShotMeterVisible(false);
+      }
+
       if ((from === 'BOUNCE' || from === 'DEAD') && to === 'IDLE') {
         shotArc.current.reset();
+        setShotResult(null);
       }
     });
 
     return unsub;
-  }, [getHandData]);
+  }, [getHandData, shotMeterValue]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     keysPressed.current.add(e.key.toLowerCase());
-
     if (e.key === 'c') {
-      if (!webcamActive) {
-        startWebcamMode();
-      } else {
-        stopWebcamMode();
-      }
+      if (!webcamActive) startWebcamMode();
+      else stopWebcamMode();
     }
   }, [webcamActive, startWebcamMode, stopWebcamMode]);
 
@@ -173,7 +245,6 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
     };
   }, [handleKeyDown, handleKeyUp]);
 
-  // Main game loop
   useEffect(() => {
     let lastTime = performance.now();
     let rafHandle = 0;
@@ -194,13 +265,11 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
       if (webcamActive) {
         const hand = getHandData();
         if (hand.rawHand) {
-          // AUTO-WALK: Player walks toward hoop automatically
           const distToHoop = Math.abs(targetZ - HOOP_Z);
           if (distToHoop > STOP_DISTANCE && !sm.isShooting() && !arc.isActive()) {
             targetZ -= AUTO_WALK_SPEED * dt;
           }
 
-          // Hand motions ONLY feed ball state machine — NOT player position
           const input: BallInput = {
             handX: hand.handNormalized.x,
             handY: hand.handNormalized.y,
@@ -210,40 +279,28 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
             handSide: hand.handedness === 'Left' ? 'left' : 'right',
             released: hand.release !== null,
             timeSinceStateEnter: sm.getStateTime(),
+            twoGateRelease: hand.twoGateRelease,
           };
 
           sm.update(dt, input);
 
-          // Draw hand skeleton on PiP canvas
           if (skeletonCanvasRef.current && hand.rawHand.landmarks.length > 0) {
             const canvas = skeletonCanvasRef.current;
             const ctx = canvas.getContext('2d');
-            if (ctx) {
-              drawHandSkeleton(ctx, hand.rawHand.landmarks, canvas.width, canvas.height);
-            }
+            if (ctx) drawHandSkeleton(ctx, hand.rawHand.landmarks, canvas.width, canvas.height);
           }
         } else {
-          // No hand detected — clear skeleton
           if (skeletonCanvasRef.current) {
             const ctx = skeletonCanvasRef.current.getContext('2d');
             if (ctx) ctx.clearRect(0, 0, skeletonCanvasRef.current.width, skeletonCanvasRef.current.height);
           }
         }
       } else {
-        // Keyboard mode
         const moveSpeed = 5;
-        if (keysPressed.current.has('arrowup') || keysPressed.current.has('w')) {
-          targetZ -= moveSpeed * dt;
-        }
-        if (keysPressed.current.has('arrowdown') || keysPressed.current.has('s')) {
-          targetZ += moveSpeed * dt;
-        }
-        if (keysPressed.current.has('arrowleft') || keysPressed.current.has('a')) {
-          targetX -= moveSpeed * dt;
-        }
-        if (keysPressed.current.has('arrowright') || keysPressed.current.has('d')) {
-          targetX += moveSpeed * dt;
-        }
+        if (keysPressed.current.has('arrowup') || keysPressed.current.has('w')) targetZ -= moveSpeed * dt;
+        if (keysPressed.current.has('arrowdown') || keysPressed.current.has('s')) targetZ += moveSpeed * dt;
+        if (keysPressed.current.has('arrowleft') || keysPressed.current.has('a')) targetX -= moveSpeed * dt;
+        if (keysPressed.current.has('arrowright') || keysPressed.current.has('d')) targetX += moveSpeed * dt;
 
         targetX = Math.max(-7, Math.min(7, targetX));
         targetZ = Math.max(-13, Math.min(13, targetZ));
@@ -251,14 +308,13 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         const kbInput: BallInput = {
           handX: 0.5,
           handY: 0.5,
-          velocityX: keysPressed.current.has('arrowleft') || keysPressed.current.has('a') ? -0.6 :
-                     keysPressed.current.has('arrowright') || keysPressed.current.has('d') ? 0.6 : 0,
-          velocityY: keysPressed.current.has(' ') ? -0.8 :
-                     keysPressed.current.has('e') ? 0.5 : 0,
+          velocityX: keysPressed.current.has('a') ? -0.6 : keysPressed.current.has('d') ? 0.6 : 0,
+          velocityY: keysPressed.current.has(' ') ? -0.8 : keysPressed.current.has('e') ? 0.5 : 0,
           fingerExtension: keysPressed.current.has('f') ? 0.2 : 0,
           handSide: 'right',
           released: keysPressed.current.has('f'),
           timeSinceStateEnter: sm.getStateTime(),
+          twoGateRelease: keysPressed.current.has('f'),
         };
 
         sm.update(dt, kbInput);
@@ -270,6 +326,14 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
       const px = smoothedPlayerPos.current.x;
       const pz = smoothedPlayerPos.current.z;
       setPlayerPosition([px, 0, pz]);
+
+      if (sm.isGathering()) {
+        const elapsed = (now - gatherStartTime.current) / 1000;
+        const speed = SHOT_METER_SPEED_MIN + (SHOT_METER_SPEED_MAX - SHOT_METER_SPEED_MIN) *
+          Math.min(1, elapsed / SHOT_METER_RAMP_TIME);
+        const val = (Math.sin(now / 1000 * speed * Math.PI * 2) + 1) / 2;
+        setShotMeterValue(val);
+      }
 
       const snapshot = sm.getSnapshot();
       const config = snapshot.config;
@@ -285,9 +349,11 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
           if (arcState.madeBasket) {
             setScore(s => s + 1);
             setStreak(s => s + 1);
+            setShotResult(arcState.hitRim ? 'Bank!' : 'Swish!');
             sm.forceTransition('DEAD');
           } else {
             setStreak(0);
+            setShotResult(arcState.hitRim ? 'Rim Out' : arcState.hitBackboard ? 'Off Board' : 'Airball');
             sm.forceTransition('BOUNCE');
           }
         }
@@ -326,9 +392,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
   }, [webcamActive, getHandData]);
 
   useEffect(() => {
-    return () => {
-      stopWebcamMode();
-    };
+    return () => { stopWebcamMode(); };
   }, [stopWebcamMode]);
 
   return (
@@ -381,7 +445,28 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         {ballState}
       </div>
 
-      {/* Webcam PiP with skeleton overlay */}
+      {/* Shot result popup */}
+      {shotResult && (
+        <div style={{
+          position: 'absolute',
+          top: '35%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          color: shotResult.includes('Swish') || shotResult.includes('Bank') ? '#00ff88' : '#ff4444',
+          fontFamily: "'Bebas Neue', Arial, sans-serif",
+          fontSize: '64px',
+          textShadow: '3px 3px 6px rgba(0,0,0,0.6)',
+          pointerEvents: 'none',
+          animation: 'fadeSlideUp 1.5s ease-out forwards',
+        }}>
+          {shotResult}
+        </div>
+      )}
+
+      {/* Shot Meter */}
+      <ShotMeter value={shotMeterValue} isVisible={shotMeterVisible} />
+
+      {/* Webcam PiP */}
       {webcamActive && (
         <div style={{
           position: 'absolute',
@@ -399,25 +484,13 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
             autoPlay
             playsInline
             muted
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              transform: 'scaleX(-1)',
-            }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
           />
           <canvas
             ref={skeletonCanvasRef}
             width={240}
             height={180}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none',
-            }}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
           />
           <div style={{
             position: 'absolute',
@@ -432,7 +505,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         </div>
       )}
 
-      {/* Controls help */}
+      {/* Controls */}
       <div style={{
         position: 'absolute',
         bottom: 20,
@@ -448,11 +521,10 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
       }}>
         {webcamActive ? (
           <>
-            <div>🏃 Player walks to hoop automatically</div>
-            <div>👇 Push hand down = dribble</div>
+            <div>🏃 Auto-walk to hoop</div>
+            <div>✊ Hold hand still = dribble</div>
             <div>↔️ Quick swipe = crossover</div>
-            <div>👆 Raise hand = gather for shot</div>
-            <div>🖐️ Open fingers = release shot</div>
+            <div>👆 Raise + flick = shoot</div>
             <div><kbd style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '3px' }}>C</kbd> Disable webcam</div>
           </>
         ) : (
@@ -460,7 +532,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
             <div><b>WASD</b> Move</div>
             <div><b>E</b> Dribble</div>
             <div><b>Space</b> Gather</div>
-            <div><b>F</b> Shoot/Release</div>
+            <div><b>F</b> Shoot</div>
             <div><kbd style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '3px' }}>C</kbd> Enable webcam</div>
           </>
         )}
@@ -486,6 +558,13 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
           ← Back
         </button>
       )}
+
+      <style>{`
+        @keyframes fadeSlideUp {
+          0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+          100% { opacity: 0; transform: translateX(-50%) translateY(-60px); }
+        }
+      `}</style>
     </div>
   );
 }

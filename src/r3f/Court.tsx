@@ -1,159 +1,163 @@
 import { useMemo } from 'react';
-import { Line } from '@react-three/drei';
 import * as THREE from 'three';
+import { Line } from '@react-three/drei';
 
 const COURT_WIDTH = 15;
-const COURT_LENGTH = 28;
-const LINE_WIDTH = 0.08;
+const COURT_HALF_LENGTH = 14;
+const LINE_Y = 0.01;
+const PAINT_Y = 0.005;
 
-const COLORS = {
-  floor: '#e8d4b8',
-  lines: '#ffffff',
-  paint: '#4a90d9',
-  threePointArc: '#ffffff',
-};
+const FLOOR_COLOR = '#c8956c';
+const LINE_COLOR = '#ffffff';
+const PAINT_COLOR = '#b85c3a';
+const BOUNDARY_COLOR = '#2a2a2a';
 
-function CourtLines() {
-  const lineGeometry = useMemo(() => {
-    const shape = new THREE.Shape();
-    
-    const hw = COURT_WIDTH / 2;
-    const hl = COURT_LENGTH / 2;
-    
-    shape.moveTo(-hw, -hl);
-    shape.lineTo(hw, -hl);
-    shape.lineTo(hw, hl);
-    shape.lineTo(-hw, hl);
-    shape.closePath();
-    
-    const hole = new THREE.Path();
-    hole.moveTo(-hw + LINE_WIDTH, -hl + LINE_WIDTH);
-    hole.lineTo(hw - LINE_WIDTH, -hl + LINE_WIDTH);
-    hole.lineTo(hw - LINE_WIDTH, hl - LINE_WIDTH);
-    hole.lineTo(-hw + LINE_WIDTH, hl - LINE_WIDTH);
-    hole.closePath();
-    shape.holes.push(hole);
-    
-    return new THREE.ShapeGeometry(shape);
-  }, []);
-
-  const centerCirclePoints = useMemo(() => {
-    const points: [number, number, number][] = [];
-    const radius = 1.8;
-    for (let i = 0; i <= 64; i++) {
-      const angle = (i / 64) * Math.PI * 2;
-      points.push([
-        Math.cos(angle) * radius,
-        0.01,
-        Math.sin(angle) * radius
-      ]);
-    }
-    return points;
-  }, []);
-
-  const halfCourtLinePoints = useMemo(() => {
-    const hw = COURT_WIDTH / 2;
-    return [
-      [-hw, 0.01, 0] as [number, number, number],
-      [hw, 0.01, 0] as [number, number, number],
-    ];
-  }, []);
-
+function CourtFloor() {
   return (
-    <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
-        <primitive object={lineGeometry} attach="geometry" />
-        <meshStandardMaterial color={COLORS.lines} />
-      </mesh>
-      
-      <Line points={centerCirclePoints} color={COLORS.lines} lineWidth={2} />
-      <Line points={halfCourtLinePoints} color={COLORS.lines} lineWidth={2} />
-    </group>
-  );
-}
-
-function Paint({ side }: { side: 1 | -1 }) {
-  const paintWidth = 4.9;
-  const paintLength = 5.8;
-  const zOffset = side * (COURT_LENGTH / 2 - paintLength / 2);
-
-  return (
-    <mesh 
-      rotation={[-Math.PI / 2, 0, 0]} 
-      position={[0, 0.003, zOffset]}
-    >
-      <planeGeometry args={[paintWidth, paintLength]} />
-      <meshStandardMaterial color={COLORS.paint} transparent opacity={0.8} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -COURT_HALF_LENGTH / 2]} receiveShadow>
+      <planeGeometry args={[COURT_WIDTH + 2, COURT_HALF_LENGTH + 4]} />
+      <meshStandardMaterial color={FLOOR_COLOR} roughness={0.85} metalness={0.02} />
     </mesh>
   );
 }
 
-function ThreePointArc({ side }: { side: 1 | -1 }) {
-  const arcPoints = useMemo(() => {
-    const points: [number, number, number][] = [];
-    const radius = 6.75;
-    const startAngle = side === 1 ? -Math.PI / 2 : Math.PI / 2;
-    const arcLength = Math.PI;
-    
-    for (let i = 0; i <= 32; i++) {
-      const angle = startAngle + (i / 32) * arcLength;
-      const zBase = side * (COURT_LENGTH / 2 - 1.575);
-      points.push([
-        Math.cos(angle) * radius,
-        0.01,
-        zBase + Math.sin(angle) * radius * side * -1
-      ]);
-    }
-    
-    return points;
-  }, [side]);
+function Boundary() {
+  const points = useMemo(() => {
+    const hw = COURT_WIDTH / 2;
+    return [
+      new THREE.Vector3(-hw, LINE_Y, 0),
+      new THREE.Vector3(-hw, LINE_Y, -COURT_HALF_LENGTH),
+      new THREE.Vector3(hw, LINE_Y, -COURT_HALF_LENGTH),
+      new THREE.Vector3(hw, LINE_Y, 0),
+      new THREE.Vector3(-hw, LINE_Y, 0),
+    ];
+  }, []);
 
-  return <Line points={arcPoints} color={COLORS.threePointArc} lineWidth={2} />;
+  return <Line points={points} color={LINE_COLOR} lineWidth={2} />;
 }
 
-function FreeThrowCircle({ side }: { side: 1 | -1 }) {
-  const circlePoints = useMemo(() => {
-    const points: [number, number, number][] = [];
+function HalfCourtLine() {
+  const hw = COURT_WIDTH / 2;
+  return (
+    <Line
+      points={[new THREE.Vector3(-hw, LINE_Y, 0), new THREE.Vector3(hw, LINE_Y, 0)]}
+      color={LINE_COLOR}
+      lineWidth={2}
+    />
+  );
+}
+
+function CenterCircle() {
+  const points = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    const segments = 48;
     const radius = 1.8;
-    const zCenter = side * (COURT_LENGTH / 2 - 5.8);
-    
-    for (let i = 0; i <= 64; i++) {
-      const angle = (i / 64) * Math.PI * 2;
-      points.push([
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI;
+      pts.push(new THREE.Vector3(
         Math.cos(angle) * radius,
-        0.01,
-        zCenter + Math.sin(angle) * radius
-      ]);
+        LINE_Y,
+        Math.sin(angle) * radius,
+      ));
     }
-    
-    return points;
-  }, [side]);
+    return pts;
+  }, []);
 
-  return <Line points={circlePoints} color={COLORS.lines} lineWidth={2} />;
+  return <Line points={points} color={LINE_COLOR} lineWidth={2} />;
 }
 
-export default function Court() {
+function Paint() {
+  const paintWidth = 4.88;
+  const paintDepth = 5.79;
+  const hw = paintWidth / 2;
+
+  const outline = useMemo(() => [
+    new THREE.Vector3(-hw, LINE_Y, 0),
+    new THREE.Vector3(-hw, LINE_Y, -paintDepth),
+    new THREE.Vector3(hw, LINE_Y, -paintDepth),
+    new THREE.Vector3(hw, LINE_Y, 0),
+  ], []);
+
   return (
     <group>
-      <mesh 
-        rotation={[-Math.PI / 2, 0, 0]} 
-        position={[0, 0, 0]}
-        receiveShadow
-      >
-        <planeGeometry args={[COURT_WIDTH + 2, COURT_LENGTH + 2]} />
-        <meshStandardMaterial color={COLORS.floor} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, PAINT_Y, -paintDepth / 2]}>
+        <planeGeometry args={[paintWidth, paintDepth]} />
+        <meshStandardMaterial color={PAINT_COLOR} roughness={0.8} transparent opacity={0.3} />
       </mesh>
-      
-      <CourtLines />
-      
-      <Paint side={1} />
-      <Paint side={-1} />
-      
-      <ThreePointArc side={1} />
-      <ThreePointArc side={-1} />
-      
-      <FreeThrowCircle side={1} />
-      <FreeThrowCircle side={-1} />
+      <Line points={outline} color={LINE_COLOR} lineWidth={2} />
+    </group>
+  );
+}
+
+function FreeThrowCircle() {
+  const points = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    const segments = 48;
+    const radius = 1.8;
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      pts.push(new THREE.Vector3(
+        Math.cos(angle) * radius,
+        LINE_Y,
+        -5.79 + Math.sin(angle) * radius,
+      ));
+    }
+    return pts;
+  }, []);
+
+  return <Line points={points} color={LINE_COLOR} lineWidth={1.5} />;
+}
+
+function ThreePointArc() {
+  const points = useMemo(() => {
+    const pts: THREE.Vector3[] = [];
+    const radius = 6.75;
+    const segments = 48;
+    const baseline = -COURT_HALF_LENGTH;
+    const hoopZ = -13;
+
+    pts.push(new THREE.Vector3(-COURT_WIDTH / 2, LINE_Y, Math.max(baseline, hoopZ + 0.5)));
+
+    const startAngle = Math.acos(Math.min(1, (COURT_WIDTH / 2) / radius));
+    const endAngle = Math.PI - startAngle;
+
+    for (let i = 0; i <= segments; i++) {
+      const angle = startAngle + (i / segments) * (endAngle - startAngle);
+      const x = Math.cos(angle) * radius;
+      const z = hoopZ + Math.sin(angle) * radius;
+      if (z <= 0) {
+        pts.push(new THREE.Vector3(-x, LINE_Y, z));
+      }
+    }
+
+    pts.push(new THREE.Vector3(COURT_WIDTH / 2, LINE_Y, Math.max(baseline, hoopZ + 0.5)));
+
+    return pts;
+  }, []);
+
+  return <Line points={points} color={LINE_COLOR} lineWidth={2} />;
+}
+
+function FloorSurround() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, -COURT_HALF_LENGTH / 2]} receiveShadow>
+      <planeGeometry args={[40, 40]} />
+      <meshStandardMaterial color={BOUNDARY_COLOR} roughness={0.95} />
+    </mesh>
+  );
+}
+
+export function Court() {
+  return (
+    <group>
+      <FloorSurround />
+      <CourtFloor />
+      <Boundary />
+      <HalfCourtLine />
+      <CenterCircle />
+      <Paint />
+      <FreeThrowCircle />
+      <ThreePointArc />
     </group>
   );
 }

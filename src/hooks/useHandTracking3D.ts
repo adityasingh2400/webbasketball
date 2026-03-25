@@ -1,11 +1,15 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { HandTracker } from '../engine/input/HandTracker';
 import { ReleaseDetector } from '../engine/input/ReleaseDetector';
+import { LandmarkFilter } from '../engine/input/OneEuroFilter';
+import { TwoGateReleaseDetector } from '../engine/input/TwoGateReleaseDetector';
 import type { HandData, TrackingFrame, ReleaseDetection } from '../types';
 
 const COURT_HALF_WIDTH = 7;
 const COURT_LENGTH = 26;
 const COURT_NEAR_Z = 12;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 500;
 
 export interface HandTracking3DState {
   isLoading: boolean;
@@ -22,6 +26,7 @@ export interface Hand3DData {
   fingerExtension: number;
   handedness: 'Left' | 'Right';
   release: ReleaseDetection | null;
+  twoGateRelease: boolean;
   rawHand: HandData | null;
 }
 
@@ -41,9 +46,12 @@ function mapHandToCourtPosition(
 export function useHandTracking3D() {
   const trackerRef = useRef<HandTracker | null>(null);
   const releaseDetectorRef = useRef<ReleaseDetector | null>(null);
+  const landmarkFilterRef = useRef(new LandmarkFilter(21, 1.0, 0.007));
+  const twoGateRef = useRef(new TwoGateReleaseDetector());
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number>(0);
   const prevPositionRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const retryCount = useRef(0);
 
   const [state, setState] = useState<HandTracking3DState>({
     isLoading: false,
@@ -60,6 +68,7 @@ export function useHandTracking3D() {
     fingerExtension: 0,
     handedness: 'Right',
     release: null,
+    twoGateRelease: false,
     rawHand: null,
   });
 
@@ -87,13 +96,31 @@ export function useHandTracking3D() {
       return;
     }
 
-    const frame: TrackingFrame = trackerRef.current.processFrame(videoRef.current);
+    let frame: TrackingFrame;
+    try {
+      frame = trackerRef.current.processFrame(videoRef.current);
+      retryCount.current = 0;
+    } catch (err) {
+      retryCount.current++;
+      if (retryCount.current <= MAX_RETRIES) {
+        setTimeout(() => {
+          rafRef.current = requestAnimationFrame(processFrame);
+        }, RETRY_DELAY_MS);
+        return;
+      }
+      setState(s => ({ ...s, error: 'Hand tracking failed. Please refresh.', isTracking: false }));
+      return;
+    }
+
     const releaseDetector = releaseDetectorRef.current;
+    const landmarkFilter = landmarkFilterRef.current;
+    const twoGate = twoGateRef.current;
 
     if (!frame.isTracking || frame.hands.length === 0) {
       handDataRef.current = {
         ...handDataRef.current,
         release: null,
+        twoGateRelease: false,
         rawHand: null,
         velocity: { x: 0, y: 0 },
       };
@@ -105,37 +132,52 @@ export function useHandTracking3D() {
     const hand = frame.hands.find(h => h.handedness === 'Right') ?? frame.hands[0];
     const now = frame.timestamp;
 
+    const filteredLandmarks = landmarkFilter.filterLandmarks(hand.landmarks, now);
+    const filteredHand: HandData = {
+      ...hand,
+      landmarks: filteredLandmarks.map((lm, i) => ({ ...lm, index: i })),
+      wrist: { x: filteredLandmarks[0].x, y: filteredLandmarks[0].y },
+      indexTip: { x: filteredLandmarks[8].x, y: filteredLandmarks[8].y },
+    };
+
     let velocity = { x: 0, y: 0 };
     if (prevPositionRef.current) {
       const dt = now - prevPositionRef.current.t;
       if (dt > 0) {
         velocity = {
-          x: ((hand.wrist.x - prevPositionRef.current.x) / dt) * 1000,
-          y: ((hand.wrist.y - prevPositionRef.current.y) / dt) * 1000,
+          x: ((filteredHand.wrist.x - prevPositionRef.current.x) / dt) * 1000,
+          y: ((filteredHand.wrist.y - prevPositionRef.current.y) / dt) * 1000,
         };
       }
     }
-    prevPositionRef.current = { x: hand.wrist.x, y: hand.wrist.y, t: now };
+    prevPositionRef.current = { x: filteredHand.wrist.x, y: filteredHand.wrist.y, t: now };
 
     let release: ReleaseDetection | null = null;
     if (releaseDetector) {
-      const detection = releaseDetector.update(hand, now);
+      const detection = releaseDetector.update(filteredHand, now);
       if (detection.released) {
         release = detection;
       }
     }
 
-    const courtPos = mapHandToCourtPosition(hand.wrist.x, hand.wrist.y);
+    const twoGateRelease = twoGate.update(
+      filteredHand.wrist.y,
+      velocity.y,
+      now,
+    );
+
+    const courtPos = mapHandToCourtPosition(filteredHand.wrist.x, filteredHand.wrist.y);
 
     handDataRef.current = {
       playerX: courtPos.x,
       playerZ: courtPos.z,
-      handNormalized: { x: 1 - hand.wrist.x, y: hand.wrist.y },
+      handNormalized: { x: 1 - filteredHand.wrist.x, y: filteredHand.wrist.y },
       velocity,
-      fingerExtension: hand.fingerExtension,
-      handedness: hand.handedness,
+      fingerExtension: filteredHand.fingerExtension,
+      handedness: filteredHand.handedness,
       release,
-      rawHand: hand,
+      twoGateRelease,
+      rawHand: filteredHand,
     };
 
     rafRef.current = requestAnimationFrame(processFrame);

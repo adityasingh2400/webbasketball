@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useCallback } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 interface HoopProps {
@@ -6,104 +7,137 @@ interface HoopProps {
 }
 
 const RIM_RADIUS = 0.23;
-const RIM_TUBE = 0.02;
-const BACKBOARD_WIDTH = 1.8;
-const BACKBOARD_HEIGHT = 1.05;
-const POLE_HEIGHT = 3.05;
-const POLE_RADIUS = 0.08;
+const RIM_TUBE = 0.015;
+const BACKBOARD_WIDTH = 1.83;
+const BACKBOARD_HEIGHT = 1.07;
+const NET_SEGMENTS = 10;
+const NET_RINGS = 5;
+const NET_LENGTH = 0.45;
 
-const COLORS = {
-  rim: '#ff4500',
-  backboard: '#ffffff',
-  backboardBorder: '#1a1a1a',
-  pole: '#888888',
-  net: '#ffffff',
-};
+function Net({ rimCenter }: { rimCenter: [number, number, number] }) {
+  const netRef = useRef<THREE.LineSegments>(null);
+  const animProgress = useRef(0);
+  const animating = useRef(false);
 
-function Net({ position }: { position: [number, number, number] }) {
-  const lineSegmentsRef = useRef<THREE.LineSegments>(null);
-  
-  const netGeometry = useMemo(() => {
-    const points: THREE.Vector3[] = [];
-    const segments = 12;
-    const rings = 6;
-    const topRadius = RIM_RADIUS - 0.02;
-    const bottomRadius = RIM_RADIUS * 0.6;
-    const netDepth = 0.4;
+  const { geometry, material } = useMemo(() => {
+    const positions: number[] = [];
+    const [cx, cy, cz] = rimCenter;
 
-    for (let ring = 0; ring <= rings; ring++) {
-      const t = ring / rings;
-      const radius = topRadius + (bottomRadius - topRadius) * t;
-      const y = -t * netDepth;
-      
-      for (let seg = 0; seg < segments; seg++) {
-        const angle = (seg / segments) * Math.PI * 2;
-        points.push(new THREE.Vector3(
-          position[0] + Math.cos(angle) * radius,
-          position[1] + y,
-          position[2] + Math.sin(angle) * radius
-        ));
+    for (let seg = 0; seg < NET_SEGMENTS; seg++) {
+      const angle = (seg / NET_SEGMENTS) * Math.PI * 2;
+      const nextAngle = ((seg + 1) / NET_SEGMENTS) * Math.PI * 2;
+
+      for (let ring = 0; ring < NET_RINGS; ring++) {
+        const t0 = ring / NET_RINGS;
+        const t1 = (ring + 1) / NET_RINGS;
+        const shrink0 = 1 - t0 * 0.4;
+        const shrink1 = 1 - t1 * 0.4;
+
+        const x0 = cx + Math.cos(angle) * RIM_RADIUS * shrink0;
+        const y0 = cy - t0 * NET_LENGTH;
+        const z0 = cz + Math.sin(angle) * RIM_RADIUS * shrink0;
+
+        const x1 = cx + Math.cos(angle) * RIM_RADIUS * shrink1;
+        const y1 = cy - t1 * NET_LENGTH;
+        const z1 = cz + Math.sin(angle) * RIM_RADIUS * shrink1;
+
+        positions.push(x0, y0, z0, x1, y1, z1);
+
+        const mx = cx + Math.cos(nextAngle) * RIM_RADIUS * shrink1;
+        const mz = cz + Math.sin(nextAngle) * RIM_RADIUS * shrink1;
+        positions.push(x1, y1, z1, mx, y1, mz);
       }
     }
 
-    const geometry = new THREE.BufferGeometry();
-    const vertices: number[] = [];
-    
-    for (let ring = 0; ring < rings; ring++) {
-      for (let seg = 0; seg < segments; seg++) {
-        const current = ring * segments + seg;
-        const below = (ring + 1) * segments + seg;
-        
-        const p1 = points[current];
-        const p2 = points[below];
-        vertices.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-      }
-    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    return geometry;
-  }, [position]);
-
-  const material = useMemo(() => {
-    return new THREE.LineBasicMaterial({ 
-      color: COLORS.net, 
-      transparent: true, 
-      opacity: 0.8 
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.7,
     });
+
+    return { geometry: geom, material: mat };
+  }, [rimCenter]);
+
+  const triggerSwish = useCallback(() => {
+    animating.current = true;
+    animProgress.current = 0;
   }, []);
 
+  useFrame((_, delta) => {
+    if (!animating.current || !netRef.current) return;
+    animProgress.current += delta * 3;
+    if (animProgress.current >= 1) {
+      animating.current = false;
+      animProgress.current = 0;
+    }
+  });
+
   return (
-    <primitive 
-      ref={lineSegmentsRef}
-      object={new THREE.LineSegments(netGeometry, material)} 
+    <primitive
+      ref={netRef}
+      object={new THREE.LineSegments(geometry, material)}
+      userData={{ triggerSwish }}
     />
   );
 }
 
-export default function Hoop({ position = [0, POLE_HEIGHT, -13] }: HoopProps) {
+export function Hoop({ position = [0, 3.05, -13] }: HoopProps) {
+  const [px, py, pz] = position;
+
+  const poleHeight = py;
+  const backboardY = py + 0.15;
+  const rimY = py;
+  const rimZ = pz + 0.25;
+
   return (
-    <group position={position}>
-      <mesh position={[0, -POLE_HEIGHT / 2, -0.6]} castShadow>
-        <cylinderGeometry args={[POLE_RADIUS, POLE_RADIUS, POLE_HEIGHT, 16]} />
-        <meshStandardMaterial color={COLORS.pole} metalness={0.6} roughness={0.4} />
+    <group>
+      {/* Support pole */}
+      <mesh position={[px, poleHeight / 2, pz - 0.3]} castShadow>
+        <cylinderGeometry args={[0.06, 0.06, poleHeight, 12]} />
+        <meshStandardMaterial color="#888888" metalness={0.6} roughness={0.3} />
       </mesh>
 
-      <mesh position={[0, 0, -0.05]} castShadow>
-        <boxGeometry args={[BACKBOARD_WIDTH, BACKBOARD_HEIGHT, 0.05]} />
-        <meshStandardMaterial color={COLORS.backboard} transparent opacity={0.9} />
+      {/* Backboard */}
+      <mesh position={[px, backboardY, pz - 0.05]} castShadow>
+        <boxGeometry args={[BACKBOARD_WIDTH, BACKBOARD_HEIGHT, 0.04]} />
+        <meshStandardMaterial
+          color="#ffffff"
+          transparent
+          opacity={0.6}
+          roughness={0.1}
+          metalness={0.05}
+        />
       </mesh>
 
-      <mesh position={[0, 0, -0.02]}>
-        <boxGeometry args={[BACKBOARD_WIDTH + 0.02, BACKBOARD_HEIGHT + 0.02, 0.01]} />
-        <meshStandardMaterial color={COLORS.backboardBorder} />
+      {/* Backboard border */}
+      <mesh position={[px, backboardY, pz - 0.06]}>
+        <boxGeometry args={[BACKBOARD_WIDTH + 0.04, BACKBOARD_HEIGHT + 0.04, 0.02]} />
+        <meshStandardMaterial color="#333333" metalness={0.4} roughness={0.5} />
       </mesh>
 
-      <mesh position={[0, -0.2, 0.15]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[RIM_RADIUS, RIM_TUBE, 16, 32]} />
-        <meshStandardMaterial color={COLORS.rim} metalness={0.8} roughness={0.3} />
+      {/* Backboard target square */}
+      <mesh position={[px, backboardY + 0.1, pz - 0.02]}>
+        <boxGeometry args={[0.6, 0.45, 0.005]} />
+        <meshBasicMaterial color="#ff3333" transparent opacity={0.3} />
       </mesh>
 
-      <Net position={[0, -0.2, 0.15]} />
+      {/* Rim */}
+      <mesh position={[px, rimY, rimZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <torusGeometry args={[RIM_RADIUS, RIM_TUBE, 12, 32]} />
+        <meshStandardMaterial color="#ff4500" metalness={0.7} roughness={0.2} />
+      </mesh>
+
+      {/* Rim bracket */}
+      <mesh position={[px, rimY - 0.01, pz + 0.12]}>
+        <boxGeometry args={[0.08, 0.02, 0.26]} />
+        <meshStandardMaterial color="#666666" metalness={0.5} roughness={0.4} />
+      </mesh>
+
+      {/* Net */}
+      <Net rimCenter={[px, rimY - RIM_TUBE, rimZ]} />
     </group>
   );
 }
