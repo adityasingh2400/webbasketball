@@ -5,12 +5,11 @@ type GameMode = 'freeplay' | 'timed' | 'streak';
 
 interface MainMenuProps {
   onStartGame: (mode: GameMode) => void;
-  onStart3D?: () => void;
   highScore: number;
   bestStreak: number;
 }
 
-export function MainMenu({ onStartGame, onStart3D, highScore, bestStreak }: MainMenuProps) {
+export function MainMenu({ onStartGame, highScore, bestStreak }: MainMenuProps) {
   const [selectedMode, setSelectedMode] = useState<GameMode>('freeplay');
 
   const modes: { id: GameMode; name: string; description: string; icon: string }[] = [
@@ -69,19 +68,9 @@ export function MainMenu({ onStartGame, onStart3D, highScore, bestStreak }: Main
           Play Now
         </button>
 
-        {onStart3D && (
-          <button 
-            className="play-button" 
-            onClick={onStart3D}
-            style={{ marginTop: '10px', background: 'linear-gradient(135deg, #4a90d9 0%, #357abd 100%)' }}
-          >
-            🎮 3D Mode (Beta)
-          </button>
-        )}
-
         <div className="menu-footer">
-          <p>✋ Move your hand to grab the ball</p>
-          <p>👆 Flick upward to shoot at the hoop</p>
+          <p>✋ Move your hand to control the ball</p>
+          <p>👆 Raise and flick to shoot</p>
           <p className="keyboard-hint">
             <kbd>ESC</kbd> during game to quit
           </p>

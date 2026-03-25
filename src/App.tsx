@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { GameScreen } from './components/GameScreen';
 import { MainMenu } from './components/MainMenu';
 import GameScreen3D from './components/GameScreen3D';
 import './App.css';
 
-type AppScreen = 'menu' | 'game' | 'game3d';
+type AppScreen = 'menu' | 'game3d';
 type GameMode = 'freeplay' | 'timed' | 'streak';
 
 const STORAGE_KEY = 'webball_stats';
@@ -32,12 +31,12 @@ function saveStats(stats: StoredStats): void {
 
 function App() {
   const [screen, setScreen] = useState<AppScreen>('menu');
-  const [gameMode, setGameMode] = useState<GameMode>('freeplay');
+  const [_gameMode, setGameMode] = useState<GameMode>('freeplay');
   const [stats, setStats] = useState<StoredStats>(loadStats);
 
   const handleStartGame = (mode: GameMode) => {
     setGameMode(mode);
-    setScreen('game');
+    setScreen('game3d');
   };
 
   const handleGameEnd = (score: number, streak: number) => {
@@ -52,7 +51,7 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && screen === 'game') {
+      if (e.key === 'Escape' && screen === 'game3d') {
         setScreen('menu');
       }
     };
@@ -61,20 +60,15 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [screen]);
 
+  void handleGameEnd;
+
   return (
     <div className="app">
       {screen === 'menu' && (
         <MainMenu
           onStartGame={handleStartGame}
-          onStart3D={() => setScreen('game3d')}
           highScore={stats.highScore}
           bestStreak={stats.bestStreak}
-        />
-      )}
-      {screen === 'game' && (
-        <GameScreen
-          mode={gameMode}
-          onGameEnd={handleGameEnd}
         />
       )}
       {screen === 'game3d' && (
