@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -30,6 +30,10 @@ export function Player({ position, visible = true, animationState = 'idle' }: Pl
     opacity: 0.25,
     depthWrite: false,
   }), []);
+
+  useEffect(() => {
+    return () => { shadowMat.dispose(); };
+  }, [shadowMat]);
 
   useFrame((_, delta) => {
     if (!groupRef.current || !visible) return;

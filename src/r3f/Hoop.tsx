@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -22,7 +22,7 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
   const prevTrigger = useRef(false);
   const basePositions = useRef<Float32Array | null>(null);
 
-  const { geometry, material } = useMemo(() => {
+  const lineSegments = useMemo(() => {
     const positions: number[] = [];
     const [cx, cy, cz] = rimCenter;
 
@@ -61,11 +61,18 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
       opacity: 0.7,
     });
 
-    return { geometry: geom, material: mat };
+    return new THREE.LineSegments(geom, mat);
   }, [rimCenter]);
 
-  if (!basePositions.current && geometry.getAttribute('position')) {
-    basePositions.current = Float32Array.from(geometry.getAttribute('position').array);
+  useEffect(() => {
+    return () => {
+      lineSegments.geometry.dispose();
+      (lineSegments.material as THREE.Material).dispose();
+    };
+  }, [lineSegments]);
+
+  if (!basePositions.current && lineSegments.geometry.getAttribute('position')) {
+    basePositions.current = Float32Array.from(lineSegments.geometry.getAttribute('position').array);
   }
 
   useFrame((_, delta) => {
@@ -78,7 +85,7 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
     if (!animating.current || !netRef.current) return;
     animProgress.current += delta * 3;
 
-    const posAttr = netRef.current.geometry.getAttribute('position');
+    const posAttr = lineSegments.geometry.getAttribute('position');
     const base = basePositions.current;
     if (posAttr && base) {
       const wave = Math.sin(animProgress.current * Math.PI) * 0.05;
@@ -98,7 +105,7 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
   return (
     <primitive
       ref={netRef}
-      object={new THREE.LineSegments(geometry, material)}
+      object={lineSegments}
     />
   );
 }

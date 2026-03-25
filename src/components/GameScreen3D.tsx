@@ -122,6 +122,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const [timeRemaining, setTimeRemaining] = useState(mode === 'timed' ? 60 : null);
   const [gameOver, setGameOver] = useState(false);
   const hasAttemptedShot = useRef(false);
+  const streakRef = useRef(0);
 
   const ballSM = useRef(new BallStateMachine());
   const shotArc = useRef(new ShotArc());
@@ -374,6 +375,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
             setScore(s => s + 1);
             setStreak(s => {
               const newStreak = s + 1;
+              streakRef.current = newStreak;
               setBestStreak(prev => Math.max(prev, newStreak));
               return newStreak;
             });
@@ -382,10 +384,11 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
             setTimeout(() => setNetSwish(false), 500);
             sm.forceTransition('DEAD');
           } else {
-            if (mode === 'streak' && hasAttemptedShot.current && streak > 0) {
+            if (mode === 'streak' && hasAttemptedShot.current && streakRef.current > 0) {
               setGameOver(true);
             }
             setStreak(0);
+            streakRef.current = 0;
             setShotResult(arcState.hitRim ? 'Rim Out' : arcState.hitBackboard ? 'Off Board' : 'Airball');
             sm.forceTransition('BOUNCE');
           }
@@ -644,7 +647,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
       {onBack && (
         <button
           onClick={() => {
-            onGameEnd?.(score, streak);
+            onGameEnd?.(score, bestStreak);
             onBack();
           }}
           style={{

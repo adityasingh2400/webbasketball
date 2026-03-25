@@ -104,7 +104,7 @@ export class ShotArc {
     this.checkBackboardCollision();
     this.checkRimCollision();
     this.checkBasketMade();
-    this.checkFloorBounce();
+    this.checkFloorBounce(deltaTime);
 
     if (this.state.time > 6) {
       this.state.landed = true;
@@ -180,12 +180,13 @@ export class ShotArc {
     }
   }
 
-  private checkFloorBounce(): void {
+  private checkFloorBounce(deltaTime: number): void {
     if (this.state.position[1] < BALL_RADIUS) {
       this.state.position[1] = BALL_RADIUS;
       this.state.velocity[1] *= -FLOOR_RESTITUTION;
-      this.state.velocity[0] *= 0.8;
-      this.state.velocity[2] *= 0.8;
+      const friction = Math.exp(-4 * deltaTime);
+      this.state.velocity[0] *= friction;
+      this.state.velocity[2] *= friction;
 
       if (Math.abs(this.state.velocity[1]) < 0.3) {
         this.state.landed = true;
