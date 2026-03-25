@@ -31,7 +31,7 @@ function saveStats(stats: StoredStats): void {
 
 function App() {
   const [screen, setScreen] = useState<AppScreen>('menu');
-  const [_gameMode, setGameMode] = useState<GameMode>('freeplay');
+  const [gameMode, setGameMode] = useState<GameMode>('freeplay');
   const [stats, setStats] = useState<StoredStats>(loadStats);
 
   const handleStartGame = (mode: GameMode) => {
@@ -60,8 +60,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [screen]);
 
-  void handleGameEnd;
-
   return (
     <div className="app">
       {screen === 'menu' && (
@@ -72,7 +70,11 @@ function App() {
         />
       )}
       {screen === 'game3d' && (
-        <GameScreen3D onBack={() => setScreen('menu')} />
+        <GameScreen3D
+          mode={gameMode}
+          onBack={() => setScreen('menu')}
+          onGameEnd={handleGameEnd}
+        />
       )}
     </div>
   );

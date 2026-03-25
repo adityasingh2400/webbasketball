@@ -1,9 +1,10 @@
-import { useMemo, useRef, useCallback } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
 interface HoopProps {
   position?: [number, number, number];
+  triggerNetAnimation?: boolean;
 }
 
 const RIM_RADIUS = 0.23;
@@ -14,10 +15,11 @@ const NET_SEGMENTS = 10;
 const NET_RINGS = 5;
 const NET_LENGTH = 0.45;
 
-function Net({ rimCenter }: { rimCenter: [number, number, number] }) {
+function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number]; triggerSwish: boolean }) {
   const netRef = useRef<THREE.LineSegments>(null);
   const animProgress = useRef(0);
   const animating = useRef(false);
+  const prevTrigger = useRef(false);
 
   const { geometry, material } = useMemo(() => {
     const positions: number[] = [];
@@ -61,14 +63,26 @@ function Net({ rimCenter }: { rimCenter: [number, number, number] }) {
     return { geometry: geom, material: mat };
   }, [rimCenter]);
 
-  const triggerSwish = useCallback(() => {
-    animating.current = true;
-    animProgress.current = 0;
-  }, []);
-
   useFrame((_, delta) => {
+    if (triggerSwish && !prevTrigger.current) {
+      animating.current = true;
+      animProgress.current = 0;
+    }
+    prevTrigger.current = triggerSwish;
+
     if (!animating.current || !netRef.current) return;
     animProgress.current += delta * 3;
+
+    const posAttr = netRef.current.geometry.getAttribute('position');
+    if (posAttr) {
+      const wave = Math.sin(animProgress.current * Math.PI) * 0.05;
+      for (let i = 0; i < posAttr.count; i++) {
+        const baseY = posAttr.getY(i);
+        posAttr.setY(i, baseY + wave * Math.sin(i * 0.5));
+      }
+      posAttr.needsUpdate = true;
+    }
+
     if (animProgress.current >= 1) {
       animating.current = false;
       animProgress.current = 0;
@@ -79,12 +93,11 @@ function Net({ rimCenter }: { rimCenter: [number, number, number] }) {
     <primitive
       ref={netRef}
       object={new THREE.LineSegments(geometry, material)}
-      userData={{ triggerSwish }}
     />
   );
 }
 
-export function Hoop({ position = [0, 3.05, -13] }: HoopProps) {
+export function Hoop({ position = [0, 3.05, -13], triggerNetAnimation = false }: HoopProps) {
   const [px, py, pz] = position;
 
   const poleHeight = py;
@@ -137,7 +150,7 @@ export function Hoop({ position = [0, 3.05, -13] }: HoopProps) {
       </mesh>
 
       {/* Net */}
-      <Net rimCenter={[px, rimY - RIM_TUBE, rimZ]} />
+      <Net rimCenter={[px, rimY - RIM_TUBE, rimZ]} triggerSwish={triggerNetAnimation} />
     </group>
   );
 }

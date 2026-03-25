@@ -53,7 +53,7 @@ function CenterCircle() {
     const segments = 48;
     const radius = 1.8;
     for (let i = 0; i <= segments; i++) {
-      const angle = (i / segments) * Math.PI;
+      const angle = Math.PI + (i / segments) * Math.PI;
       pts.push(new THREE.Vector3(
         Math.cos(angle) * radius,
         LINE_Y,

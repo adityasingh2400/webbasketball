@@ -8,7 +8,9 @@ import { ShotArc } from '../engine/ShotArc';
 import type { HandLandmark } from '../types';
 
 interface GameScreen3DProps {
+  mode?: 'freeplay' | 'timed' | 'streak';
   onBack?: () => void;
+  onGameEnd?: (score: number, streak: number) => void;
 }
 
 const SMOOTHING = 0.12;
@@ -102,7 +104,7 @@ function ShotMeter({ value, isVisible }: { value: number; isVisible: boolean }) 
   );
 }
 
-export default function GameScreen3D({ onBack }: GameScreen3DProps) {
+export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: GameScreen3DProps) {
   const [playerPosition, setPlayerPosition] = useState<[number, number, number]>([0, 0, 8]);
   const [ballPosition, setBallPosition] = useState<[number, number, number]>([0.3, 0.8, 8]);
   const [animationState, setAnimationState] = useState<'idle' | 'dribbling' | 'gathering' | 'shooting'>('idle');
@@ -114,6 +116,8 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
   const [shotMeterValue, setShotMeterValue] = useState(0);
   const [shotMeterVisible, setShotMeterVisible] = useState(false);
   const [shotResult, setShotResult] = useState<string | null>(null);
+  const shotMeterValueRef = useRef(0);
+  const [netSwish, setNetSwish] = useState(false);
 
   const ballSM = useRef(new BallStateMachine());
   const shotArc = useRef(new ShotArc());
@@ -181,7 +185,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
       }
 
       if (to === 'SHOOTING' && (from === 'GATHER_HIGH' || from === 'GATHER_LOW')) {
-        shotMeterStopped.current = shotMeterValue;
+        shotMeterStopped.current = shotMeterValueRef.current;
         setShotMeterVisible(false);
       }
 
@@ -222,7 +226,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
     });
 
     return unsub;
-  }, [getHandData, shotMeterValue]);
+  }, [getHandData]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     keysPressed.current.add(e.key.toLowerCase());
@@ -332,6 +336,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         const speed = SHOT_METER_SPEED_MIN + (SHOT_METER_SPEED_MAX - SHOT_METER_SPEED_MIN) *
           Math.min(1, elapsed / SHOT_METER_RAMP_TIME);
         const val = (Math.sin(now / 1000 * speed * Math.PI * 2) + 1) / 2;
+        shotMeterValueRef.current = val;
         setShotMeterValue(val);
       }
 
@@ -350,6 +355,8 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
             setScore(s => s + 1);
             setStreak(s => s + 1);
             setShotResult(arcState.hitRim ? 'Bank!' : 'Swish!');
+            setNetSwish(true);
+            setTimeout(() => setNetSwish(false), 500);
             sm.forceTransition('DEAD');
           } else {
             setStreak(0);
@@ -403,6 +410,7 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
         ballVisible={true}
         isDribbling={isDribbling}
         animationState={animationState}
+        triggerNetSwish={netSwish}
       />
 
       {/* Score HUD */}
@@ -540,7 +548,10 @@ export default function GameScreen3D({ onBack }: GameScreen3DProps) {
 
       {onBack && (
         <button
-          onClick={onBack}
+          onClick={() => {
+            onGameEnd?.(score, streak);
+            onBack();
+          }}
           style={{
             position: 'absolute',
             top: 20,

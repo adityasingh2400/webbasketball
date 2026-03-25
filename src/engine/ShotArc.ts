@@ -43,7 +43,7 @@ export function calculateShotVelocity(
   const horizontalSpeed = speed * cosAngle;
   const dirAngle = Math.atan2(dz, dx);
 
-  const lateralJitter = (1 - Math.abs(accuracyBonus)) * (Math.random() - 0.5) * 0.6;
+  const lateralJitter = (1 - Math.max(0, accuracyBonus)) * (Math.random() - 0.5) * 0.6;
 
   return [
     horizontalSpeed * Math.cos(dirAngle) + lateralJitter,

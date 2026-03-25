@@ -13,6 +13,7 @@ interface GameCanvasProps {
   ballVisible?: boolean;
   isDribbling?: boolean;
   animationState?: 'idle' | 'dribbling' | 'gathering' | 'shooting';
+  triggerNetSwish?: boolean;
 }
 
 function LoadingFallback() {
@@ -30,6 +31,7 @@ export function GameCanvas({
   ballVisible = true,
   isDribbling = false,
   animationState = 'idle',
+  triggerNetSwish = false,
 }: GameCanvasProps) {
   return (
     <Canvas
@@ -42,7 +44,7 @@ export function GameCanvas({
         <fog attach="fog" args={['#c0d8e8', 35, 70]} />
 
         <Court />
-        <Hoop position={[0, 3.05, -13]} />
+        <Hoop position={[0, 3.05, -13]} triggerNetAnimation={triggerNetSwish} />
 
         <Player
           position={playerPosition}
