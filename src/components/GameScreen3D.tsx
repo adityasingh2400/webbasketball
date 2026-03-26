@@ -6,6 +6,8 @@ import { BallStateMachine } from '../engine/BallStateMachine';
 import type { BallInput, BallHandlingState } from '../engine/BallStateMachine';
 import { ShotArc } from '../engine/ShotArc';
 import type { HandLandmark } from '../types';
+import type { QualityLevel } from '../r3f/Lighting';
+import './GameScreen3D.css';
 
 interface GameScreen3DProps {
   mode?: 'freeplay' | 'timed' | 'streak';
@@ -13,14 +15,17 @@ interface GameScreen3DProps {
   onGameEnd?: (score: number, streak: number) => void;
 }
 
-const SMOOTHING = 0.12;
 const AUTO_WALK_SPEED = 1.2;
 const HOOP_Z = -13;
 const STOP_DISTANCE = 6;
-const SHOT_METER_SPEED_MIN = 1;
-const SHOT_METER_SPEED_MAX = 4;
-const SHOT_METER_RAMP_TIME = 2;
+const COURT_HALF_W = 7.12;
+const COURT_Z_MIN = -13.8;
+const COURT_Z_MAX = -0.5;
+const SHOT_METER_SPEED_MIN = 0.55;
+const SHOT_METER_SPEED_MAX = 1.4;
+const SHOT_METER_RAMP_TIME = 3;
 const SWEET_SPOT_SIZE = 0.15;
+const SWEET_SPOT_TOP = 1.0;
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -64,49 +69,24 @@ function drawHandSkeleton(
 function ShotMeter({ value, isVisible }: { value: number; isVisible: boolean }) {
   if (!isVisible) return null;
 
-  const sweetSpotStart = 0.5 - SWEET_SPOT_SIZE / 2;
-  const sweetSpotEnd = 0.5 + SWEET_SPOT_SIZE / 2;
-  const inSweetSpot = value >= sweetSpotStart && value <= sweetSpotEnd;
+  const sweetSpotStart = SWEET_SPOT_TOP - SWEET_SPOT_SIZE;
+  const inSweetSpot = value >= sweetSpotStart && value <= SWEET_SPOT_TOP;
 
   return (
-    <div style={{
-      position: 'absolute',
-      left: '50%',
-      bottom: 120,
-      transform: 'translateX(-50%)',
-      width: 200,
-      height: 16,
-      background: 'rgba(0,0,0,0.6)',
-      borderRadius: 8,
-      overflow: 'hidden',
-      border: '2px solid rgba(255,255,255,0.3)',
-    }}>
-      <div style={{
-        position: 'absolute',
-        left: `${sweetSpotStart * 100}%`,
-        width: `${SWEET_SPOT_SIZE * 100}%`,
-        height: '100%',
-        background: 'rgba(0,255,136,0.3)',
-      }} />
-      <div style={{
-        position: 'absolute',
-        left: `${value * 100}%`,
-        top: 0,
-        width: 4,
-        height: '100%',
-        background: inSweetSpot ? '#00ff88' : '#ff6b35',
-        borderRadius: 2,
-        transform: 'translateX(-2px)',
-        boxShadow: inSweetSpot ? '0 0 8px #00ff88' : '0 0 6px #ff6b35',
-        transition: 'background 0.1s',
-      }} />
+    <div className="shot-meter">
+      <div className="shot-meter__gradient" />
+      <div className="shot-meter__sweetspot" style={{ height: `${SWEET_SPOT_SIZE * 100}%` }} />
+      <div
+        className={`shot-meter__indicator ${inSweetSpot ? 'shot-meter__indicator--sweet' : 'shot-meter__indicator--normal'}`}
+        style={{ bottom: `${value * 100}%` }}
+      />
     </div>
   );
 }
 
 export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: GameScreen3DProps) {
-  const [playerPosition, setPlayerPosition] = useState<[number, number, number]>([0, 0, 8]);
-  const [ballPosition, setBallPosition] = useState<[number, number, number]>([0.3, 0.8, 8]);
+  const [playerPosition, setPlayerPosition] = useState<[number, number, number]>([0, 0, -4]);
+  const [ballPosition, setBallPosition] = useState<[number, number, number]>([0.3, 0.8, -4]);
   const [animationState, setAnimationState] = useState<'idle' | 'dribbling' | 'gathering' | 'shooting'>('idle');
   const [isDribbling, setIsDribbling] = useState(false);
   const [score, setScore] = useState(0);
@@ -114,11 +94,14 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const [bestStreak, setBestStreak] = useState(0);
   const [ballState, setBallState] = useState<BallHandlingState>('IDLE');
   const [webcamActive, setWebcamActive] = useState(false);
+  const [quality, setQuality] = useState<QualityLevel>('high');
   const [shotMeterValue, setShotMeterValue] = useState(0);
   const [shotMeterVisible, setShotMeterVisible] = useState(false);
   const [shotResult, setShotResult] = useState<string | null>(null);
+  const [jumpProgress, setJumpProgress] = useState(0);
   const shotMeterValueRef = useRef(0);
   const [netSwish, setNetSwish] = useState(false);
+  const [isPerfectSwish, setIsPerfectSwish] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(mode === 'timed' ? 60 : null);
   const [gameOver, setGameOver] = useState(false);
   const hasAttemptedShot = useRef(false);
@@ -127,12 +110,14 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const ballSM = useRef(new BallStateMachine());
   const shotArc = useRef(new ShotArc());
   const keysPressed = useRef<Set<string>>(new Set());
-  const smoothedPlayerPos = useRef({ x: 0, z: 8 });
+  const smoothedPlayerPos = useRef({ x: 0, z: -4 });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const gatherStartTime = useRef(0);
   const shotMeterStopped = useRef<number | null>(null);
+  const fHeld = useRef(false);
+  const fJustReleased = useRef(false);
 
   const { startWebcam, stopWebcam } = useWebcam();
   const {
@@ -203,17 +188,17 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         const hand = getHandData();
         const power = Math.min(1, Math.abs(hand.velocity.y) * 2);
 
-        const sweetSpotStart = 0.5 - SWEET_SPOT_SIZE / 2;
-        const sweetSpotEnd = 0.5 + SWEET_SPOT_SIZE / 2;
+        const sweetSpotStart = SWEET_SPOT_TOP - SWEET_SPOT_SIZE;
         const stoppedValue = shotMeterStopped.current ?? 0.5;
+        const isGreen = stoppedValue >= sweetSpotStart && stoppedValue <= SWEET_SPOT_TOP;
         let accuracyBonus = 0;
-        if (stoppedValue >= sweetSpotStart && stoppedValue <= sweetSpotEnd) {
-          accuracyBonus = 0.2;
+        if (isGreen) {
+          accuracyBonus = 1.0;
         } else {
-          accuracyBonus = -Math.abs(stoppedValue - 0.5) * 0.4;
+          accuracyBonus = -(sweetSpotStart - stoppedValue) * 0.7;
         }
 
-        shotArc.current.launch(pos, Math.max(0.4, power), accuracyBonus);
+        shotArc.current.launch(pos, Math.max(0.4, power), accuracyBonus, isGreen);
       }
 
       if (to === 'SHOOTING' || to === 'FOLLOW_THROUGH') {
@@ -235,14 +220,25 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     keysPressed.current.add(e.key.toLowerCase());
+    if (e.key.toLowerCase() === 'f' && !fHeld.current) {
+      fHeld.current = true;
+      fJustReleased.current = false;
+    }
     if (e.key === 'c') {
       if (!webcamActive) startWebcamMode();
       else stopWebcamMode();
+    }
+    if (e.key === 'q') {
+      setQuality(prev => prev === 'high' ? 'medium' : prev === 'medium' ? 'low' : 'high');
     }
   }, [webcamActive, startWebcamMode, stopWebcamMode]);
 
   const handleKeyUp = useCallback((e: KeyboardEvent) => {
     keysPressed.current.delete(e.key.toLowerCase());
+    if (e.key.toLowerCase() === 'f' && fHeld.current) {
+      fHeld.current = false;
+      fJustReleased.current = true;
+    }
   }, []);
 
   useEffect(() => {
@@ -326,26 +322,37 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         if (keysPressed.current.has('arrowleft') || keysPressed.current.has('a')) targetX -= moveSpeed * dt;
         if (keysPressed.current.has('arrowright') || keysPressed.current.has('d')) targetX += moveSpeed * dt;
 
-        targetX = Math.max(-7, Math.min(7, targetX));
-        targetZ = Math.max(-13, Math.min(13, targetZ));
+        targetX = Math.max(-COURT_HALF_W, Math.min(COURT_HALF_W, targetX));
+        targetZ = Math.max(COURT_Z_MIN, Math.min(COURT_Z_MAX, targetZ));
+
+        const holdingF = fHeld.current;
+        const releasedF = fJustReleased.current;
+        if (releasedF) fJustReleased.current = false;
+
+        const isInGather = sm.isGathering();
+        const isInShoot = sm.isShooting();
 
         const kbInput: BallInput = {
           handX: 0.5,
           handY: 0.5,
           velocityX: keysPressed.current.has('a') ? -0.6 : keysPressed.current.has('d') ? 0.6 : 0,
-          velocityY: keysPressed.current.has(' ') ? -0.8 : keysPressed.current.has('e') ? 0.5 : 0,
-          fingerExtension: keysPressed.current.has('f') ? 0.2 : 0,
+          velocityY: holdingF && !isInGather && !isInShoot ? -0.8 : keysPressed.current.has('e') ? 0.5 : 0,
+          fingerExtension: releasedF && isInGather ? 0.2 : 0,
           handSide: 'right',
-          released: keysPressed.current.has('f'),
+          released: releasedF && isInGather,
           timeSinceStateEnter: sm.getStateTime(),
-          twoGateRelease: keysPressed.current.has('f'),
+          twoGateRelease: releasedF && isInGather,
         };
 
         sm.update(dt, kbInput);
       }
 
-      smoothedPlayerPos.current.x = lerp(smoothedPlayerPos.current.x, targetX, SMOOTHING);
-      smoothedPlayerPos.current.z = lerp(smoothedPlayerPos.current.z, targetZ, SMOOTHING);
+      const smoothFactor = 1 - Math.exp(-8 * dt);
+      smoothedPlayerPos.current.x = lerp(smoothedPlayerPos.current.x, targetX, smoothFactor);
+      smoothedPlayerPos.current.z = lerp(smoothedPlayerPos.current.z, targetZ, smoothFactor);
+
+      smoothedPlayerPos.current.x = Math.max(-COURT_HALF_W, Math.min(COURT_HALF_W, smoothedPlayerPos.current.x));
+      smoothedPlayerPos.current.z = Math.max(COURT_Z_MIN, Math.min(COURT_Z_MAX, smoothedPlayerPos.current.z));
 
       const px = smoothedPlayerPos.current.x;
       const pz = smoothedPlayerPos.current.z;
@@ -355,9 +362,12 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         const elapsed = (now - gatherStartTime.current) / 1000;
         const speed = SHOT_METER_SPEED_MIN + (SHOT_METER_SPEED_MAX - SHOT_METER_SPEED_MIN) *
           Math.min(1, elapsed / SHOT_METER_RAMP_TIME);
-        const val = (Math.sin(now / 1000 * speed * Math.PI * 2) + 1) / 2;
+        const val = Math.min(1, elapsed * speed);
         shotMeterValueRef.current = val;
         setShotMeterValue(val);
+        setJumpProgress(val);
+      } else if (!sm.isShooting()) {
+        setJumpProgress(0);
       }
 
       const snapshot = sm.getSnapshot();
@@ -379,9 +389,11 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
               setBestStreak(prev => Math.max(prev, newStreak));
               return newStreak;
             });
-            setShotResult(arcState.hitRim || arcState.hitBackboard ? 'Bank!' : 'Swish!');
+            const wasPerfect = arc.isPerfect();
+            setShotResult(wasPerfect ? 'GREEN!' : arcState.hitRim || arcState.hitBackboard ? 'Bank!' : 'Swish!');
+            setIsPerfectSwish(wasPerfect);
             setNetSwish(true);
-            setTimeout(() => setNetSwish(false), 500);
+            setTimeout(() => { setNetSwish(false); setIsPerfectSwish(false); }, 800);
             sm.forceTransition('DEAD');
           } else {
             if (mode === 'streak' && hasAttemptedShot.current && streakRef.current > 0) {
@@ -433,7 +445,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   }, [stopWebcamMode]);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+    <div className="game-screen">
       <GameCanvas
         playerPosition={playerPosition}
         ballPosition={ballPosition}
@@ -441,127 +453,49 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         isDribbling={isDribbling}
         animationState={animationState}
         triggerNetSwish={netSwish}
+        isPerfectSwish={isPerfectSwish}
+        jumpProgress={jumpProgress}
+        quality={quality}
       />
 
-      {/* Score HUD */}
-      <div style={{
-        position: 'absolute',
-        top: 20,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        color: 'white',
-        fontFamily: "'Bebas Neue', Arial, sans-serif",
-        fontSize: '48px',
-        textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
-        background: 'rgba(0,0,0,0.3)',
-        padding: '5px 30px',
-        borderRadius: '12px',
-        display: 'flex',
-        gap: '30px',
-        alignItems: 'center',
-      }}>
+      <div className="hud-score">
         <span>{score}</span>
         {streak >= 3 && (
-          <span style={{ fontSize: '24px', color: '#ff6b35' }}>
+          <span className="hud-score__streak">
             🔥 {streak}
           </span>
         )}
       </div>
 
-      {/* State debug label */}
-      <div style={{
-        position: 'absolute',
-        top: 80,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        color: 'rgba(255,255,255,0.5)',
-        fontFamily: "'DM Sans', Arial, sans-serif",
-        fontSize: '12px',
-        textTransform: 'uppercase',
-        letterSpacing: '2px',
-      }}>
-        {ballState}
-      </div>
+      <div className="hud-state">{ballState}</div>
 
-      {/* Shot result popup */}
       {shotResult && (
-        <div style={{
-          position: 'absolute',
-          top: '35%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          color: shotResult.includes('Swish') || shotResult.includes('Bank') ? '#00ff88' : '#ff4444',
-          fontFamily: "'Bebas Neue', Arial, sans-serif",
-          fontSize: '64px',
-          textShadow: '3px 3px 6px rgba(0,0,0,0.6)',
-          pointerEvents: 'none',
-          animation: 'fadeSlideUp 1.5s ease-out forwards',
-        }}>
+        <div className={`shot-result ${
+          shotResult === 'GREEN!' ? 'shot-result--green' :
+          shotResult.includes('Swish') || shotResult.includes('Bank') ? 'shot-result--make' :
+          'shot-result--miss'
+        }`}>
           {shotResult}
         </div>
       )}
 
-      {/* Timer (timed mode) */}
       {timeRemaining !== null && (
-        <div style={{
-          position: 'absolute',
-          top: 20,
-          left: 20,
-          color: timeRemaining <= 10 ? '#ff4444' : 'white',
-          fontFamily: "'Bebas Neue', Arial, sans-serif",
-          fontSize: '36px',
-          textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
-          background: 'rgba(0,0,0,0.3)',
-          padding: '4px 16px',
-          borderRadius: '8px',
-        }}>
+        <div className={`hud-timer ${timeRemaining <= 10 ? 'hud-timer--warning' : 'hud-timer--normal'}`}>
           {timeRemaining}s
         </div>
       )}
 
-      {/* Game Over overlay */}
       {gameOver && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-        }}>
-          <div style={{
-            color: 'white',
-            fontFamily: "'Bebas Neue', Arial, sans-serif",
-            fontSize: '72px',
-            textShadow: '3px 3px 6px rgba(0,0,0,0.6)',
-          }}>
-            Game Over
-          </div>
-          <div style={{
-            color: '#ff6b35',
-            fontFamily: "'Bebas Neue', Arial, sans-serif",
-            fontSize: '48px',
-            marginTop: 12,
-          }}>
+        <div className="game-over">
+          <div className="game-over__title">Game Over</div>
+          <div className="game-over__stats">
             Score: {score} | Best Streak: {bestStreak}
           </div>
           <button
+            className="game-over__btn"
             onClick={() => {
               onGameEnd?.(score, bestStreak);
               onBack?.();
-            }}
-            style={{
-              marginTop: 24,
-              padding: '12px 32px',
-              fontSize: '20px',
-              fontFamily: "'DM Sans', Arial, sans-serif",
-              background: '#ff6b35',
-              color: 'white',
-              border: 'none',
-              borderRadius: '10px',
-              cursor: 'pointer',
             }}
           >
             Back to Menu
@@ -569,111 +503,59 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         </div>
       )}
 
-      {/* Shot Meter */}
       <ShotMeter value={shotMeterValue} isVisible={shotMeterVisible} />
 
-      {/* Webcam PiP */}
       {webcamActive && (
-        <div style={{
-          position: 'absolute',
-          bottom: 20,
-          right: 20,
-          width: 240,
-          height: 180,
-          borderRadius: '12px',
-          overflow: 'hidden',
-          border: '2px solid rgba(255,255,255,0.3)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        }}>
+        <div className="webcam-pip">
           <video
             ref={pipVideoRef}
             autoPlay
             playsInline
             muted
-            style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+            className="webcam-pip__video"
           />
           <canvas
             ref={skeletonCanvasRef}
             width={240}
             height={180}
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+            className="webcam-pip__skeleton"
           />
-          <div style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            background: trackingState.isTracking ? '#00ff88' : '#ff4444',
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            boxShadow: trackingState.isTracking ? '0 0 6px #00ff88' : '0 0 6px #ff4444',
-          }} />
+          <div className={`webcam-pip__status ${trackingState.isTracking ? 'webcam-pip__status--active' : 'webcam-pip__status--inactive'}`} />
         </div>
       )}
 
-      {/* Controls */}
-      <div style={{
-        position: 'absolute',
-        bottom: 20,
-        left: 20,
-        color: 'white',
-        fontFamily: "'DM Sans', Arial, sans-serif",
-        fontSize: '13px',
-        textShadow: '1px 1px 2px rgba(0,0,0,0.5)',
-        background: 'rgba(0,0,0,0.4)',
-        padding: '12px 16px',
-        borderRadius: '10px',
-        lineHeight: '1.6',
-      }}>
+      <div className="controls-panel">
         {webcamActive ? (
           <>
             <div>🏃 Auto-walk to hoop</div>
             <div>✊ Hold hand still = dribble</div>
             <div>↔️ Quick swipe = crossover</div>
             <div>👆 Raise + flick = shoot</div>
-            <div><kbd style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '3px' }}>C</kbd> Disable webcam</div>
+            <div><kbd>C</kbd> Disable webcam</div>
+            <div><kbd>Q</kbd> Quality: {quality}</div>
           </>
         ) : (
           <>
             <div><b>WASD</b> Move</div>
             <div><b>E</b> Dribble</div>
-            <div><b>Space</b> Gather</div>
-            <div><b>F</b> Shoot</div>
-            <div><kbd style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '3px' }}>C</kbd> Enable webcam</div>
+            <div><b>Hold F</b> Jump shot (release in green)</div>
+            <div><kbd>C</kbd> Enable webcam</div>
+            <div><kbd>Q</kbd> Quality: {quality}</div>
           </>
         )}
       </div>
 
       {onBack && (
         <button
+          className="hud-back"
           onClick={() => {
             onGameEnd?.(score, bestStreak);
             onBack();
-          }}
-          style={{
-            position: 'absolute',
-            top: 20,
-            right: 20,
-            padding: '8px 16px',
-            fontSize: '14px',
-            background: 'rgba(0,0,0,0.4)',
-            color: 'white',
-            border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontFamily: "'DM Sans', Arial, sans-serif",
           }}
         >
           ← Back
         </button>
       )}
-
-      <style>{`
-        @keyframes fadeSlideUp {
-          0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-          100% { opacity: 0; transform: translateX(-50%) translateY(-60px); }
-        }
-      `}</style>
     </div>
   );
 }

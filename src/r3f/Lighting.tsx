@@ -1,21 +1,31 @@
+export type QualityLevel = 'high' | 'medium' | 'low';
+
+const SHADOW_QUALITY: Record<QualityLevel, number> = {
+  high: 2048,
+  medium: 1024,
+  low: 512,
+};
+
 interface LightingProps {
   shadowQuality?: number;
   ambientIntensity?: number;
+  quality?: QualityLevel;
 }
 
-export function Lighting({ shadowQuality = 2048, ambientIntensity = 0.5 }: LightingProps) {
+export function Lighting({ shadowQuality, ambientIntensity = 0.5, quality = 'high' }: LightingProps) {
+  const mapSize = shadowQuality ?? SHADOW_QUALITY[quality];
+
   return (
     <>
       <ambientLight intensity={ambientIntensity} color="#fff8f0" />
 
-      {/* Main key light */}
       <directionalLight
         position={[8, 18, 5]}
         intensity={1.3}
         color="#fff5e6"
         castShadow
-        shadow-mapSize-width={shadowQuality}
-        shadow-mapSize-height={shadowQuality}
+        shadow-mapSize-width={mapSize}
+        shadow-mapSize-height={mapSize}
         shadow-camera-left={-12}
         shadow-camera-right={12}
         shadow-camera-top={18}
@@ -25,14 +35,12 @@ export function Lighting({ shadowQuality = 2048, ambientIntensity = 0.5 }: Light
         shadow-bias={-0.001}
       />
 
-      {/* Fill light */}
       <directionalLight
         position={[-6, 12, -8]}
         intensity={0.35}
         color="#e0eaff"
       />
 
-      {/* Rim/back light for depth */}
       <directionalLight
         position={[0, 10, -16]}
         intensity={0.25}

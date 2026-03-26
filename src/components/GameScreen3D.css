@@ -1,0 +1,352 @@
+.game-screen {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* === Score HUD === */
+.hud-score {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 48px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 6px 32px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  z-index: 2;
+}
+
+.hud-score__streak {
+  font-size: 24px;
+  color: var(--color-primary);
+  animation: pulseGlow 1s ease-in-out infinite alternate;
+}
+
+/* === State Debug Label === */
+.hud-state {
+  position: absolute;
+  top: 82px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  z-index: 2;
+}
+
+/* === Shot Result Popup === */
+.shot-result {
+  position: absolute;
+  top: 32%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  pointer-events: none;
+  animation: fadeSlideUp 1.5s var(--ease-out) forwards;
+  z-index: 3;
+}
+
+.shot-result--green {
+  color: var(--color-success);
+  font-size: 80px;
+  letter-spacing: 6px;
+  text-shadow:
+    0 0 20px rgba(34, 197, 94, 0.8),
+    0 0 40px rgba(34, 197, 94, 0.4),
+    0 0 80px rgba(34, 197, 94, 0.2),
+    3px 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.shot-result--make {
+  color: #00ff88;
+  font-size: 64px;
+  letter-spacing: 2px;
+  text-shadow:
+    0 0 12px rgba(0, 255, 136, 0.5),
+    3px 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.shot-result--miss {
+  color: var(--color-error);
+  font-size: 56px;
+  letter-spacing: 2px;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.6);
+}
+
+/* === Timer === */
+.hud-timer {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-family: var(--font-display);
+  font-size: 36px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 4px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 2;
+  transition: color var(--duration-normal) var(--ease-out);
+}
+
+.hud-timer--warning {
+  color: var(--color-error);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.hud-timer--normal {
+  color: var(--text-primary);
+}
+
+/* === Game Over Overlay === */
+.game-over {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  animation: fadeIn var(--duration-slow) var(--ease-out);
+}
+
+.game-over__title {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 72px;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  letter-spacing: 4px;
+}
+
+.game-over__stats {
+  color: var(--color-primary);
+  font-family: var(--font-display);
+  font-size: 42px;
+  margin-top: 12px;
+}
+
+.game-over__btn {
+  margin-top: 28px;
+  padding: 14px 40px;
+  font-size: 18px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  background: var(--color-primary);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out);
+  box-shadow: 0 4px 20px var(--color-primary-glow);
+}
+
+.game-over__btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow-strong);
+}
+
+/* === Shot Meter === */
+.shot-meter {
+  position: absolute;
+  left: 50%;
+  bottom: 36%;
+  transform: translateX(60px);
+  width: 14px;
+  height: 160px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 7px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+.shot-meter__gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, #ff2020 0%, #ff6030 30%, #ffcc00 60%, #44dd44 80%, #00ff6a 90%, #00ff6a 100%);
+  opacity: 0.3;
+  border-radius: 7px;
+}
+
+.shot-meter__sweetspot {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  top: 0;
+  background: rgba(0, 255, 106, 0.25);
+  border-bottom: 2px solid rgba(0, 255, 106, 0.5);
+  border-radius: 7px 7px 0 0;
+}
+
+.shot-meter__indicator {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 4px;
+  transform: translateY(50%);
+  border-radius: 2px;
+  transition: background 0.06s, box-shadow 0.06s;
+}
+
+.shot-meter__indicator--sweet {
+  background: var(--color-success);
+  box-shadow: 0 0 10px #00ff6a, 0 0 20px rgba(0, 255, 106, 0.5);
+}
+
+.shot-meter__indicator--normal {
+  background: var(--color-primary);
+  box-shadow: 0 0 6px var(--color-primary-glow);
+}
+
+/* === Webcam PiP === */
+.webcam-pip {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 240px;
+  height: 180px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 2;
+}
+
+.webcam-pip__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.webcam-pip__skeleton {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.webcam-pip__status {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.webcam-pip__status--active {
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.webcam-pip__status--inactive {
+  background: var(--color-error);
+  box-shadow: 0 0 6px var(--color-error);
+}
+
+/* === Controls Panel === */
+.controls-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 1.7;
+  z-index: 2;
+}
+
+.controls-panel kbd {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* === Back Button === */
+.hud-back {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out);
+  z-index: 2;
+}
+
+.hud-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* === Animations === */
+@keyframes fadeSlideUp {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(-20px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-60px) scale(0.95);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulseGlow {
+  from {
+    text-shadow: 0 0 8px var(--color-primary-glow);
+  }
+  to {
+    text-shadow: 0 0 20px var(--color-primary-glow), 0 0 40px rgba(255, 107, 53, 0.2);
+  }
+}

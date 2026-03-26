@@ -26,11 +26,40 @@ export function calculateShotVelocity(
   start: [number, number, number],
   power: number,
   accuracyBonus: number = 0,
+  perfect: boolean = false,
 ): [number, number, number] {
   const dx = HOOP_POSITION.x - start[0];
   const dy = HOOP_POSITION.y - start[1] + 1.5;
-  const dz = HOOP_POSITION.z - start[2];
+  const dz = HOOP_POSITION.z + 0.25 - start[2];
   const dist = Math.sqrt(dx * dx + dz * dz);
+
+  if (perfect) {
+    const targetX = HOOP_POSITION.x;
+    const targetY = HOOP_POSITION.y + 0.15;
+    const targetZ = HOOP_POSITION.z + 0.25;
+
+    const tdx = targetX - start[0];
+    const tdz = targetZ - start[2];
+    const horizDist = Math.sqrt(tdx * tdx + tdz * tdz);
+
+    const peakY = targetY + 1.2;
+    const h1 = peakY - start[1];
+    const h2 = peakY - targetY;
+
+    const tUp = Math.sqrt(2 * h1 / GRAVITY);
+    const tDown = Math.sqrt(2 * h2 / GRAVITY);
+    const totalT = tUp + tDown;
+
+    const vy = GRAVITY * tUp;
+    const vHoriz = horizDist / totalT;
+    const angle = Math.atan2(tdz, tdx);
+
+    return [
+      vHoriz * Math.cos(angle),
+      vy,
+      vHoriz * Math.sin(angle),
+    ];
+  }
 
   const speed = 5 + power * 8;
 
@@ -55,6 +84,7 @@ export function calculateShotVelocity(
 export class ShotArc {
   private state: ShotArcState;
   private active = false;
+  private perfect = false;
 
   constructor() {
     this.state = this.createInitialState();
@@ -73,8 +103,9 @@ export class ShotArc {
     };
   }
 
-  launch(start: [number, number, number], power: number, accuracyBonus: number = 0): void {
-    const velocity = calculateShotVelocity(start, power, accuracyBonus);
+  launch(start: [number, number, number], power: number, accuracyBonus: number = 0, perfect: boolean = false): void {
+    this.perfect = perfect;
+    const velocity = calculateShotVelocity(start, power, accuracyBonus, perfect);
     this.state = {
       position: [...start],
       velocity,
@@ -101,8 +132,10 @@ export class ShotArc {
     this.state.position[2] += this.state.velocity[2] * deltaTime;
     this.state.rotation += 8 * deltaTime;
 
-    this.checkBackboardCollision();
-    this.checkRimCollision();
+    if (!this.perfect) {
+      this.checkBackboardCollision();
+      this.checkRimCollision();
+    }
     this.checkBasketMade();
     this.checkFloorBounce(deltaTime);
 
@@ -197,6 +230,10 @@ export class ShotArc {
 
   isActive(): boolean {
     return this.active;
+  }
+
+  isPerfect(): boolean {
+    return this.perfect;
   }
 
   getPosition(): [number, number, number] {
