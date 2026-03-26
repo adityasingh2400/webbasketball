@@ -63,6 +63,9 @@ function Character({ offsets, hipsY }: CharacterProps) {
 
   const setupDone = useRef(false);
   if (!setupDone.current) {
+    fbx.scale.setScalar(1);
+    fbx.position.set(0, 0, 0);
+
     fbx.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -254,9 +257,15 @@ export default function PoseEditor({ onBack }: { onBack: () => void }) {
       }
     }
     const code = lines.join('\n');
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        setCopied(false);
+      },
+    );
   }, [offsets, hipsY, poseName]);
 
   useEffect(() => {
