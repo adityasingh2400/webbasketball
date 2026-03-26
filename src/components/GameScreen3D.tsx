@@ -6,6 +6,7 @@ import { BallStateMachine } from '../engine/BallStateMachine';
 import type { BallInput, BallHandlingState } from '../engine/BallStateMachine';
 import { ShotArc } from '../engine/ShotArc';
 import type { HandLandmark } from '../types';
+import type { QualityLevel } from '../r3f/Lighting';
 import './GameScreen3D.css';
 
 interface GameScreen3DProps {
@@ -93,6 +94,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
   const [bestStreak, setBestStreak] = useState(0);
   const [ballState, setBallState] = useState<BallHandlingState>('IDLE');
   const [webcamActive, setWebcamActive] = useState(false);
+  const [quality, setQuality] = useState<QualityLevel>('high');
   const [shotMeterValue, setShotMeterValue] = useState(0);
   const [shotMeterVisible, setShotMeterVisible] = useState(false);
   const [shotResult, setShotResult] = useState<string | null>(null);
@@ -225,6 +227,9 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
     if (e.key === 'c') {
       if (!webcamActive) startWebcamMode();
       else stopWebcamMode();
+    }
+    if (e.key === 'q') {
+      setQuality(prev => prev === 'high' ? 'medium' : prev === 'medium' ? 'low' : 'high');
     }
   }, [webcamActive, startWebcamMode, stopWebcamMode]);
 
@@ -450,6 +455,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
         triggerNetSwish={netSwish}
         isPerfectSwish={isPerfectSwish}
         jumpProgress={jumpProgress}
+        quality={quality}
       />
 
       <div className="hud-score">
@@ -526,6 +532,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
             <div>↔️ Quick swipe = crossover</div>
             <div>👆 Raise + flick = shoot</div>
             <div><kbd>C</kbd> Disable webcam</div>
+            <div><kbd>Q</kbd> Quality: {quality}</div>
           </>
         ) : (
           <>
@@ -533,6 +540,7 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
             <div><b>E</b> Dribble</div>
             <div><b>Hold F</b> Jump shot (release in green)</div>
             <div><kbd>C</kbd> Enable webcam</div>
+            <div><kbd>Q</kbd> Quality: {quality}</div>
           </>
         )}
       </div>
