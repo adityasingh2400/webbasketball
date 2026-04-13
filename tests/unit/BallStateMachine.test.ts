@@ -3,15 +3,11 @@ import { BallStateMachine, type BallInput } from '../../src/engine/BallStateMach
 
 function makeInput(overrides: Partial<BallInput> = {}): BallInput {
   return {
-    handX: 0.5,
-    handY: 0.5,
     velocityX: 0,
     velocityY: 0,
-    fingerExtension: 0,
     handSide: 'right',
     released: false,
     timeSinceStateEnter: 0,
-    twoGateRelease: false,
     ...overrides,
   };
 }
@@ -77,7 +73,7 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ velocityY: 0.5 }));
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_DOWN');
 
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 29; i++) {
         sm.update(0.016, makeInput());
       }
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_UP');
@@ -87,10 +83,10 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: 0.5 }));
 
-      for (let i = 0; i < 15; i++) sm.update(0.016, makeInput());
+      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_UP');
 
-      for (let i = 0; i < 15; i++) sm.update(0.016, makeInput());
+      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_DOWN');
     });
   });
@@ -138,23 +134,26 @@ describe('BallStateMachine', () => {
       expect(sm.getState()).toBe('GATHER_HIGH');
     });
 
-    it('GATHER_HIGH → SHOOTING on two-gate release', () => {
+    it('GATHER_HIGH → SHOOTING on release', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('GATHER_HIGH');
 
-      sm.update(0.016, makeInput({ twoGateRelease: true }));
+      sm.update(0.016, makeInput({ released: true }));
       expect(sm.getState()).toBe('SHOOTING');
       expect(sm.isShooting()).toBe(true);
     });
 
-    it('GATHER_HIGH → SHOOTING on finger extension with release', () => {
+    it('GATHER_HIGH only shoots once release is true', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
 
-      sm.update(0.016, makeInput({ fingerExtension: 0.15, released: true }));
+      sm.update(0.016, makeInput());
+      expect(sm.getState()).toBe('GATHER_HIGH');
+
+      sm.update(0.016, makeInput({ released: true }));
       expect(sm.getState()).toBe('SHOOTING');
     });
 
@@ -162,7 +161,7 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
-      sm.update(0.016, makeInput({ twoGateRelease: true }));
+      sm.update(0.016, makeInput({ released: true }));
       expect(sm.getState()).toBe('SHOOTING');
 
       for (let i = 0; i < 12; i++) sm.update(0.016, makeInput());
@@ -173,7 +172,7 @@ describe('BallStateMachine', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: -0.8 }));
       for (let i = 0; i < 25; i++) sm.update(0.016, makeInput());
-      sm.update(0.016, makeInput({ twoGateRelease: true }));
+      sm.update(0.016, makeInput({ released: true }));
       for (let i = 0; i < 12; i++) sm.update(0.016, makeInput());
       expect(sm.getState()).toBe('FOLLOW_THROUGH');
 

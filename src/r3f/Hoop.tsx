@@ -1,26 +1,27 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { GameRuntime } from '../engine/GameRuntime';
 
 interface HoopProps {
+  runtime: GameRuntime;
   position?: [number, number, number];
-  triggerNetAnimation?: boolean;
 }
 
 const RIM_RADIUS = 0.23;
-const RIM_TUBE = 0.015;
-const BACKBOARD_WIDTH = 1.83;
-const BACKBOARD_HEIGHT = 1.07;
-const NET_SEGMENTS = 10;
-const NET_RINGS = 5;
-const NET_LENGTH = 0.45;
+const RIM_TUBE = 0.02;
+const NET_SEGMENTS = 16;
+const NET_RINGS = 8;
+const NET_LENGTH = 0.5;
 
-function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number]; triggerSwish: boolean }) {
+function Net({ runtime, rimCenter }: { runtime: GameRuntime; rimCenter: [number, number, number] }) {
   const netRef = useRef<THREE.LineSegments>(null);
   const animProgress = useRef(0);
   const animating = useRef(false);
-  const prevTrigger = useRef(false);
+  const previousSwishVersion = useRef(0);
   const basePositions = useRef<Float32Array | null>(null);
+  const isPerfectRef = useRef(false);
+  const materialRef = useRef<THREE.LineBasicMaterial | null>(null);
 
   const lineSegments = useMemo(() => {
     const positions: number[] = [];
@@ -33,13 +34,12 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
       for (let ring = 0; ring < NET_RINGS; ring++) {
         const t0 = ring / NET_RINGS;
         const t1 = (ring + 1) / NET_RINGS;
-        const shrink0 = 1 - t0 * 0.4;
-        const shrink1 = 1 - t1 * 0.4;
+        const shrink0 = 1 - t0 * 0.45;
+        const shrink1 = 1 - t1 * 0.45;
 
         const x0 = cx + Math.cos(angle) * RIM_RADIUS * shrink0;
         const y0 = cy - t0 * NET_LENGTH;
         const z0 = cz + Math.sin(angle) * RIM_RADIUS * shrink0;
-
         const x1 = cx + Math.cos(angle) * RIM_RADIUS * shrink1;
         const y1 = cy - t1 * NET_LENGTH;
         const z1 = cz + Math.sin(angle) * RIM_RADIUS * shrink1;
@@ -54,116 +54,162 @@ function Net({ rimCenter, triggerSwish }: { rimCenter: [number, number, number];
 
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-    const mat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.7,
-    });
-
+    const mat = new THREE.LineBasicMaterial({ color: 0xeeeeee, transparent: true, opacity: 0.8 });
     return new THREE.LineSegments(geom, mat);
   }, [rimCenter]);
 
   useEffect(() => {
+    materialRef.current = lineSegments.material as THREE.LineBasicMaterial;
+    const posAttr = lineSegments.geometry.getAttribute('position');
+    if (posAttr) {
+      basePositions.current = Float32Array.from(posAttr.array);
+    }
+
     return () => {
       lineSegments.geometry.dispose();
       (lineSegments.material as THREE.Material).dispose();
+      materialRef.current = null;
+      basePositions.current = null;
     };
   }, [lineSegments]);
 
-  if (!basePositions.current && lineSegments.geometry.getAttribute('position')) {
-    basePositions.current = Float32Array.from(lineSegments.geometry.getAttribute('position').array);
-  }
-
   useFrame((_, delta) => {
-    if (triggerSwish && !prevTrigger.current) {
+    const snapshot = runtime.getRenderState();
+
+    if (snapshot.netSwishVersion !== previousSwishVersion.current) {
+      previousSwishVersion.current = snapshot.netSwishVersion;
       animating.current = true;
       animProgress.current = 0;
+      isPerfectRef.current = snapshot.latestSwishPerfect;
     }
-    prevTrigger.current = triggerSwish;
 
-    if (!animating.current || !netRef.current) return;
-    animProgress.current += delta * 3;
+    if (!animating.current) return;
+    animProgress.current += delta * (isPerfectRef.current ? 1.8 : 3);
 
     const posAttr = lineSegments.geometry.getAttribute('position');
     const base = basePositions.current;
+    const mat = materialRef.current;
+
     if (posAttr && base) {
-      const wave = Math.sin(animProgress.current * Math.PI) * 0.05;
+      const t = animProgress.current;
+      const decay = Math.exp(-t * 2.5);
+      const intensity = isPerfectRef.current ? 0.14 : 0.06;
+
       for (let i = 0; i < posAttr.count; i++) {
-        const baseY = base[i * 3 + 1];
-        posAttr.setY(i, baseY + wave * Math.sin(i * 0.5));
+        const bx = base[i * 3], by = base[i * 3 + 1], bz = base[i * 3 + 2];
+        const ringDepth = (rimCenter[1] - by) / NET_LENGTH;
+        const push = Math.sin(t * Math.PI * 3 - ringDepth * 2) * intensity * decay * (0.5 + ringDepth);
+        const splay = Math.sin(t * Math.PI * 4 - ringDepth * 3) * intensity * 0.5 * decay * ringDepth;
+        const rx = bx - rimCenter[0], rz = bz - rimCenter[2];
+        const rl = Math.sqrt(rx * rx + rz * rz) || 1;
+        posAttr.setX(i, bx + (rx / rl) * splay);
+        posAttr.setY(i, by - push);
+        posAttr.setZ(i, bz + (rz / rl) * splay);
       }
       posAttr.needsUpdate = true;
     }
 
-    if (animProgress.current >= 1) {
+    if (isPerfectRef.current && mat) {
+      const glow = Math.sin(animProgress.current * Math.PI * 4) * 0.3 + 0.7;
+      mat.color.setRGB(glow, 1, glow);
+    }
+
+    if (animProgress.current >= 1 && mat) {
       animating.current = false;
-      animProgress.current = 0;
+      mat.color.setHex(0xeeeeee);
+      mat.opacity = 0.8;
     }
   });
 
-  return (
-    <primitive
-      ref={netRef}
-      object={lineSegments}
-    />
-  );
+  return <primitive ref={netRef} object={lineSegments} />;
 }
 
-export function Hoop({ position = [0, 3.05, -13], triggerNetAnimation = false }: HoopProps) {
+export function Hoop({ runtime, position = [0, 3.05, -13] }: HoopProps) {
   const [px, py, pz] = position;
-
-  const poleHeight = py;
-  const backboardY = py + 0.15;
+  const backboardY = py + 0.2;
   const rimY = py;
-  const rimZ = pz + 0.25;
+  const rimZ = pz + 0.3;
 
   return (
     <group>
-      {/* Support pole */}
-      <mesh position={[px, poleHeight / 2, pz - 0.3]} castShadow>
-        <cylinderGeometry args={[0.06, 0.06, poleHeight, 12]} />
-        <meshStandardMaterial color="#888888" metalness={0.6} roughness={0.3} />
+      {/* Main support pole */}
+      <mesh position={[px, py / 2, pz - 0.35]} castShadow>
+        <cylinderGeometry args={[0.07, 0.09, py, 12]} />
+        <meshStandardMaterial color="#707070" metalness={0.7} roughness={0.25} />
+      </mesh>
+      {/* Pole base plate */}
+      <mesh position={[px, 0.02, pz - 0.35]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.25, 12]} />
+        <meshStandardMaterial color="#505050" metalness={0.6} roughness={0.3} />
       </mesh>
 
-      {/* Backboard */}
-      <mesh position={[px, backboardY, pz - 0.05]} castShadow>
-        <boxGeometry args={[BACKBOARD_WIDTH, BACKBOARD_HEIGHT, 0.04]} />
-        <meshStandardMaterial
-          color="#ffffff"
+      {/* Backboard frame */}
+      <mesh position={[px, backboardY, pz - 0.07]} castShadow>
+        <boxGeometry args={[1.85, 1.1, 0.06]} />
+        <meshStandardMaterial color="#2a2a2a" metalness={0.5} roughness={0.4} />
+      </mesh>
+      {/* Backboard glass */}
+      <mesh position={[px, backboardY, pz - 0.03]}>
+        <boxGeometry args={[1.8, 1.05, 0.02]} />
+        <meshPhysicalMaterial
+          color="#d0e8f0"
           transparent
-          opacity={0.6}
-          roughness={0.1}
-          metalness={0.05}
+          opacity={0.35}
+          roughness={0.05}
+          metalness={0.02}
+          clearcoat={1}
+          clearcoatRoughness={0.1}
         />
       </mesh>
+      {/* Backboard target square (shooter's square) */}
+      <mesh position={[px, backboardY + 0.08, pz - 0.015]}>
+        <boxGeometry args={[0.6, 0.45, 0.003]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.7} />
+      </mesh>
+      {/* Target square border */}
+      {[
+        [0, 0.225, 0.6, 0.02], [0, -0.225, 0.6, 0.02],
+        [-0.3, 0, 0.02, 0.45], [0.3, 0, 0.02, 0.45],
+      ].map(([ox, oy, w, h], i) => (
+        <mesh key={i} position={[px + ox, backboardY + 0.08 + oy, pz - 0.012]}>
+          <boxGeometry args={[w, h, 0.003]} />
+          <meshBasicMaterial color="#ff2200" transparent opacity={0.8} />
+        </mesh>
+      ))}
 
-      {/* Backboard border */}
-      <mesh position={[px, backboardY, pz - 0.06]}>
-        <boxGeometry args={[BACKBOARD_WIDTH + 0.04, BACKBOARD_HEIGHT + 0.04, 0.02]} />
-        <meshStandardMaterial color="#333333" metalness={0.4} roughness={0.5} />
+      {/* Rim bracket arm */}
+      <mesh position={[px, rimY - 0.01, pz + 0.14]} castShadow>
+        <boxGeometry args={[0.06, 0.03, 0.35]} />
+        <meshStandardMaterial color="#555555" metalness={0.6} roughness={0.3} />
+      </mesh>
+      {/* Bracket gusset */}
+      <mesh position={[px, rimY + 0.01, pz + 0.02]} rotation={[0.3, 0, 0]}>
+        <boxGeometry args={[0.04, 0.08, 0.08]} />
+        <meshStandardMaterial color="#555555" metalness={0.6} roughness={0.3} />
       </mesh>
 
-      {/* Backboard target square */}
-      <mesh position={[px, backboardY + 0.1, pz - 0.02]}>
-        <boxGeometry args={[0.6, 0.45, 0.005]} />
-        <meshBasicMaterial color="#ff3333" transparent opacity={0.3} />
-      </mesh>
-
-      {/* Rim */}
+      {/* Rim — thicker, more metallic */}
       <mesh position={[px, rimY, rimZ]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <torusGeometry args={[RIM_RADIUS, RIM_TUBE, 12, 32]} />
-        <meshStandardMaterial color="#ff4500" metalness={0.7} roughness={0.2} />
+        <torusGeometry args={[RIM_RADIUS, RIM_TUBE, 16, 36]} />
+        <meshStandardMaterial color="#ff3300" metalness={0.8} roughness={0.15} />
       </mesh>
 
-      {/* Rim bracket */}
-      <mesh position={[px, rimY - 0.01, pz + 0.12]}>
-        <boxGeometry args={[0.08, 0.02, 0.26]} />
-        <meshStandardMaterial color="#666666" metalness={0.5} roughness={0.4} />
-      </mesh>
+      {/* Rim hooks (where net attaches) */}
+      {Array.from({ length: 12 }).map((_, i) => {
+        const angle = (i / 12) * Math.PI * 2;
+        return (
+          <mesh key={i} position={[
+            px + Math.cos(angle) * (RIM_RADIUS + 0.01),
+            rimY - 0.025,
+            rimZ + Math.sin(angle) * (RIM_RADIUS + 0.01),
+          ]}>
+            <sphereGeometry args={[0.008, 4, 4]} />
+            <meshStandardMaterial color="#cc2200" metalness={0.7} roughness={0.3} />
+          </mesh>
+        );
+      })}
 
-      {/* Net */}
-      <Net rimCenter={[px, rimY - RIM_TUBE, rimZ]} triggerSwish={triggerNetAnimation} />
+      <Net runtime={runtime} rimCenter={[px, rimY - RIM_TUBE, rimZ]} />
     </group>
   );
 }

@@ -10,12 +10,10 @@ export type BallHandlingState =
   | 'CROSSOVER_L2R'
   | 'BEHIND_BACK'
   | 'BETWEEN_LEGS'
-  | 'HESITATION'
   | 'GATHER_LOW'
   | 'GATHER_HIGH'
   | 'SHOOTING'
   | 'FOLLOW_THROUGH'
-  | 'IN_FLIGHT'
   | 'BOUNCE'
   | 'DEAD';
 
@@ -36,21 +34,16 @@ export interface TransitionCondition {
 }
 
 export interface BallInput {
-  handX: number;
-  handY: number;
   velocityX: number;
   velocityY: number;
-  fingerExtension: number;
   handSide: 'left' | 'right';
   released: boolean;
   timeSinceStateEnter: number;
-  twoGateRelease: boolean;
 }
 
 const CROSSOVER_VELOCITY_THRESHOLD = 0.5;
 const GATHER_VELOCITY_THRESHOLD = -0.6;
 const DRIBBLE_VELOCITY_THRESHOLD = 0.3;
-const RELEASE_EXTENSION_THRESHOLD = 0.12;
 
 const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
   IDLE: {
@@ -83,37 +76,37 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
   },
 
   DRIBBLE_RIGHT_DOWN: {
-    duration: 0.2,
+    duration: 0.45,
     ballOffset: { x: 0.3, y: 0.3, z: 0.15 },
-    ballBounce: { amplitude: 0.3, frequency: 6 },
-    ballSpin: 5,
+    ballBounce: { amplitude: 0.3, frequency: 2.8 },
+    ballSpin: 3,
     playerAnim: 'dribbling',
     canMove: true,
     autoNext: 'DRIBBLE_RIGHT_UP',
   },
   DRIBBLE_RIGHT_UP: {
-    duration: 0.2,
+    duration: 0.45,
     ballOffset: { x: 0.3, y: 0.65, z: 0.15 },
     ballBounce: null,
-    ballSpin: 3,
+    ballSpin: 2,
     playerAnim: 'dribbling',
     canMove: true,
     autoNext: 'DRIBBLE_RIGHT_DOWN',
   },
   DRIBBLE_LEFT_DOWN: {
-    duration: 0.2,
+    duration: 0.45,
     ballOffset: { x: -0.3, y: 0.3, z: 0.15 },
-    ballBounce: { amplitude: 0.3, frequency: 6 },
-    ballSpin: -5,
+    ballBounce: { amplitude: 0.3, frequency: 2.8 },
+    ballSpin: -3,
     playerAnim: 'dribbling',
     canMove: true,
     autoNext: 'DRIBBLE_LEFT_UP',
   },
   DRIBBLE_LEFT_UP: {
-    duration: 0.2,
+    duration: 0.45,
     ballOffset: { x: -0.3, y: 0.65, z: 0.15 },
     ballBounce: null,
-    ballSpin: -3,
+    ballSpin: -2,
     playerAnim: 'dribbling',
     canMove: true,
     autoNext: 'DRIBBLE_LEFT_DOWN',
@@ -122,7 +115,7 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
   CROSSOVER_R2L: {
     duration: 0.25,
     ballOffset: { x: 0, y: 0.25, z: 0.2 },
-    ballBounce: { amplitude: 0.15, frequency: 8 },
+    ballBounce: { amplitude: 0.15, frequency: 2 },
     ballSpin: -8,
     playerAnim: 'dribbling',
     canMove: true,
@@ -131,7 +124,7 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
   CROSSOVER_L2R: {
     duration: 0.25,
     ballOffset: { x: 0, y: 0.25, z: 0.2 },
-    ballBounce: { amplitude: 0.15, frequency: 8 },
+    ballBounce: { amplitude: 0.15, frequency: 2 },
     ballSpin: 8,
     playerAnim: 'dribbling',
     canMove: true,
@@ -156,18 +149,8 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
     canMove: false,
     autoNext: 'DRIBBLE_LEFT_DOWN',
   },
-  HESITATION: {
-    duration: 0.3,
-    ballOffset: { x: 0.2, y: 0.6, z: 0.15 },
-    ballBounce: null,
-    ballSpin: 0,
-    playerAnim: 'dribbling',
-    canMove: true,
-    autoNext: 'DRIBBLE_RIGHT_DOWN',
-  },
-
   GATHER_LOW: {
-    duration: 0.3,
+    duration: 0.2,
     ballOffset: { x: 0.15, y: 0.5, z: 0.1 },
     ballBounce: null,
     ballSpin: 0,
@@ -176,7 +159,7 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
     autoNext: 'GATHER_HIGH',
   },
   GATHER_HIGH: {
-    duration: 0.25,
+    duration: null,
     ballOffset: { x: 0.1, y: 1.4, z: 0.05 },
     ballBounce: null,
     ballSpin: 0,
@@ -202,16 +185,6 @@ const STATE_CONFIGS: Record<BallHandlingState, BallStateConfig> = {
     playerAnim: 'shooting',
     canMove: false,
     autoNext: 'IDLE',
-  },
-
-  IN_FLIGHT: {
-    duration: null,
-    ballOffset: { x: 0, y: 0, z: 0 },
-    ballBounce: null,
-    ballSpin: -8,
-    playerAnim: 'shooting',
-    canMove: false,
-    autoNext: null,
   },
   BOUNCE: {
     duration: 0.8,
@@ -254,7 +227,7 @@ function isCrossover(state: BallHandlingState): boolean {
 }
 
 function isTrick(state: BallHandlingState): boolean {
-  return state === 'BEHIND_BACK' || state === 'BETWEEN_LEGS' || state === 'HESITATION';
+  return state === 'BEHIND_BACK' || state === 'BETWEEN_LEGS';
 }
 
 function isGathering(state: BallHandlingState): boolean {
@@ -282,39 +255,35 @@ const TRANSITIONS: Record<string, TransitionCondition[]> = {
     { to: 'CROSSOVER_R2L', when: (i) => i.velocityX < -CROSSOVER_VELOCITY_THRESHOLD, priority: 10 },
     { to: 'GATHER_LOW', when: (i) => i.velocityY < GATHER_VELOCITY_THRESHOLD, priority: 9 },
     { to: 'BEHIND_BACK', when: (i) => Math.abs(i.velocityX) > 1.0 && i.velocityY < -0.2, priority: 8 },
-    { to: 'HESITATION', when: (i) => Math.abs(i.velocityX) < 0.1 && Math.abs(i.velocityY) < 0.1 && i.timeSinceStateEnter > 0.15, priority: 3 },
   ],
   DRIBBLE_RIGHT_UP: [
     { to: 'CROSSOVER_R2L', when: (i) => i.velocityX < -CROSSOVER_VELOCITY_THRESHOLD, priority: 10 },
     { to: 'GATHER_LOW', when: (i) => i.velocityY < GATHER_VELOCITY_THRESHOLD, priority: 9 },
-    { to: 'HELD_RIGHT', when: (i) => Math.abs(i.velocityY) < 0.05 && i.timeSinceStateEnter > 0.1, priority: 2 },
+    { to: 'HELD_RIGHT', when: (i) => Math.abs(i.velocityY) < 0.05 && i.timeSinceStateEnter > 0.8, priority: 2 },
   ],
   DRIBBLE_LEFT_DOWN: [
     { to: 'CROSSOVER_L2R', when: (i) => i.velocityX > CROSSOVER_VELOCITY_THRESHOLD, priority: 10 },
     { to: 'GATHER_LOW', when: (i) => i.velocityY < GATHER_VELOCITY_THRESHOLD, priority: 9 },
     { to: 'BETWEEN_LEGS', when: (i) => Math.abs(i.velocityX) > 1.0 && i.velocityY < -0.2, priority: 8 },
-    { to: 'HESITATION', when: (i) => Math.abs(i.velocityX) < 0.1 && Math.abs(i.velocityY) < 0.1 && i.timeSinceStateEnter > 0.15, priority: 3 },
   ],
   DRIBBLE_LEFT_UP: [
     { to: 'CROSSOVER_L2R', when: (i) => i.velocityX > CROSSOVER_VELOCITY_THRESHOLD, priority: 10 },
     { to: 'GATHER_LOW', when: (i) => i.velocityY < GATHER_VELOCITY_THRESHOLD, priority: 9 },
-    { to: 'HELD_LEFT', when: (i) => Math.abs(i.velocityY) < 0.05 && i.timeSinceStateEnter > 0.1, priority: 2 },
+    { to: 'HELD_LEFT', when: (i) => Math.abs(i.velocityY) < 0.05 && i.timeSinceStateEnter > 0.8, priority: 2 },
   ],
 
   CROSSOVER_R2L: [],
   CROSSOVER_L2R: [],
   BEHIND_BACK: [],
   BETWEEN_LEGS: [],
-  HESITATION: [],
 
   GATHER_LOW: [],
   GATHER_HIGH: [
-    { to: 'SHOOTING', when: (i) => i.twoGateRelease || (i.released && i.fingerExtension > RELEASE_EXTENSION_THRESHOLD), priority: 10 },
+    { to: 'SHOOTING', when: (i) => i.released, priority: 10 },
   ],
 
   SHOOTING: [],
   FOLLOW_THROUGH: [],
-  IN_FLIGHT: [],
   BOUNCE: [],
   DEAD: [],
 };
@@ -422,7 +391,6 @@ export class BallStateMachine {
   isCrossover(): boolean { return isCrossover(this.currentState); }
   isTrick(): boolean { return isTrick(this.currentState); }
   isGathering(): boolean { return isGathering(this.currentState); }
-  isInFlight(): boolean { return this.currentState === 'IN_FLIGHT'; }
   isShooting(): boolean { return this.currentState === 'SHOOTING' || this.currentState === 'FOLLOW_THROUGH'; }
 
   private transitionTo(to: BallHandlingState): void {

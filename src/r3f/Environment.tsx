@@ -1,6 +1,16 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { QualityLevel } from './Lighting';
+
+function hashFloat(seed: number): number {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function randomRange(seed: number, min: number, max: number): number {
+  return min + hashFloat(seed) * (max - min);
+}
 
 function createGrassTexture(): THREE.CanvasTexture {
   const size = 512;
@@ -211,10 +221,15 @@ function Crowd({ basePosition, rows, seatsPerRow, rowSpacing, seatSpacing, facin
     const result: { pos: [number, number, number]; seed: number; row: number }[] = [];
     for (let row = 0; row < rows; row++) {
       for (let seat = 0; seat < seatsPerRow; seat++) {
-        if (Math.random() < 0.12) continue;
+        const seed = row * 97 + seat * 53 + rows * 11 + seatsPerRow * 7;
+        if (hashFloat(seed) < 0.12) continue;
         result.push({
-          pos: [(seat - seatsPerRow / 2) * seatSpacing + (Math.random() - 0.5) * 0.1, row * 0.5, -row * rowSpacing],
-          seed: row * seatsPerRow + seat + Math.random() * 0.01,
+          pos: [
+            (seat - seatsPerRow / 2) * seatSpacing + randomRange(seed + 1, -0.05, 0.05),
+            row * 0.5,
+            -row * rowSpacing,
+          ],
+          seed: row * seatsPerRow + seat + hashFloat(seed + 2) * 0.01,
           row,
         });
       }
@@ -241,8 +256,9 @@ function Crowd({ basePosition, rows, seatsPerRow, rowSpacing, seatSpacing, facin
 
 function TreeCanopy({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
   const groupRef = useRef<THREE.Group>(null);
-  const swayOffset = useMemo(() => Math.random() * Math.PI * 2, []);
-  const swaySpeed = useMemo(() => 0.3 + Math.random() * 0.3, []);
+  const seedBase = position[0] * 17.13 + position[1] * 3.17 + position[2] * 11.29 + scale * 5.37;
+  const swayOffset = useMemo(() => hashFloat(seedBase + 1) * Math.PI * 2, [seedBase]);
+  const swaySpeed = useMemo(() => randomRange(seedBase + 2, 0.3, 0.6), [seedBase]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -253,11 +269,11 @@ function TreeCanopy({ position, scale = 1 }: { position: [number, number, number
 
   const trunkH = 2.5 + scale * 1.5;
   const leafColors = useMemo(() => [
-    `hsl(${110 + Math.random() * 30}, ${55 + Math.random() * 20}%, ${25 + Math.random() * 15}%)`,
-    `hsl(${115 + Math.random() * 25}, ${50 + Math.random() * 25}%, ${30 + Math.random() * 15}%)`,
-    `hsl(${105 + Math.random() * 35}, ${45 + Math.random() * 20}%, ${22 + Math.random() * 12}%)`,
-    `hsl(${120 + Math.random() * 20}, ${40 + Math.random() * 20}%, ${35 + Math.random() * 10}%)`,
-  ], []);
+    `hsl(${randomRange(seedBase + 3, 110, 140)}, ${randomRange(seedBase + 4, 55, 75)}%, ${randomRange(seedBase + 5, 25, 40)}%)`,
+    `hsl(${randomRange(seedBase + 6, 115, 140)}, ${randomRange(seedBase + 7, 50, 75)}%, ${randomRange(seedBase + 8, 30, 45)}%)`,
+    `hsl(${randomRange(seedBase + 9, 105, 140)}, ${randomRange(seedBase + 10, 45, 65)}%, ${randomRange(seedBase + 11, 22, 34)}%)`,
+    `hsl(${randomRange(seedBase + 12, 120, 140)}, ${randomRange(seedBase + 13, 40, 60)}%, ${randomRange(seedBase + 14, 35, 45)}%)`,
+  ], [seedBase]);
 
   return (
     <group ref={groupRef} position={position} scale={scale}>
@@ -298,9 +314,10 @@ function TreeCanopy({ position, scale = 1 }: { position: [number, number, number
 
 function PalmTree({ position }: { position: [number, number, number] }) {
   const groupRef = useRef<THREE.Group>(null);
-  const lean = useMemo(() => (Math.random() - 0.5) * 0.12, []);
-  const height = useMemo(() => 4 + Math.random() * 2, []);
-  const swayOffset = useMemo(() => Math.random() * Math.PI * 2, []);
+  const seedBase = position[0] * 19.31 + position[1] * 2.17 + position[2] * 13.67;
+  const lean = useMemo(() => randomRange(seedBase + 1, -0.06, 0.06), [seedBase]);
+  const height = useMemo(() => randomRange(seedBase + 2, 4, 6), [seedBase]);
+  const swayOffset = useMemo(() => hashFloat(seedBase + 3) * Math.PI * 2, [seedBase]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -309,12 +326,14 @@ function PalmTree({ position }: { position: [number, number, number] }) {
   });
 
   const frondColors = useMemo(() =>
-    Array.from({ length: 8 }, () => `hsl(${100 + Math.random() * 40}, ${50 + Math.random() * 25}%, ${28 + Math.random() * 15}%)`),
-  []);
+    Array.from({ length: 8 }, (_, index) =>
+      `hsl(${randomRange(seedBase + 10 + index, 100, 140)}, ${randomRange(seedBase + 30 + index, 50, 75)}%, ${randomRange(seedBase + 50 + index, 28, 43)}%)`,
+    ),
+  [seedBase]);
 
   const frondDroops = useMemo(
-    () => frondColors.map(() => 0.5 + Math.random() * 0.4),
-    [frondColors],
+    () => frondColors.map((_, index) => randomRange(seedBase + 70 + index, 0.5, 0.9)),
+    [frondColors, seedBase],
   );
 
   return (
@@ -370,8 +389,8 @@ function Beach() {
     [-1, 0.05, 3], [-3, 0.04, -6], [-2, 0.06, -12], [1, 0.03, 8], [-4, 0.05, 1],
   ].map(([x, y, z], i) => ({
     pos: [x, y, z] as [number, number, number],
-    rot: [Math.random() * Math.PI, Math.random() * Math.PI, 0] as [number, number, number],
-    size: 0.1 + Math.random() * 0.12,
+    rot: [hashFloat(i + 1) * Math.PI, hashFloat(i + 11) * Math.PI, 0] as [number, number, number],
+    size: randomRange(i + 21, 0.1, 0.22),
     color: `hsl(30, ${10 + i * 5}%, ${50 + i * 5}%)`,
   })), []);
 
@@ -464,11 +483,11 @@ function BackgroundTrees() {
   const trees = useMemo(() => {
     const result: { pos: [number, number, number]; scale: number }[] = [];
     for (let i = 0; i < 30; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 22 + Math.random() * 25;
+      const angle = hashFloat(i + 101) * Math.PI * 2;
+      const dist = randomRange(i + 201, 22, 47);
       result.push({
         pos: [Math.cos(angle) * dist, 0, Math.sin(angle) * dist - 5],
-        scale: 0.7 + Math.random() * 0.8,
+        scale: randomRange(i + 301, 0.7, 1.5),
       });
     }
     return result;
@@ -483,21 +502,29 @@ function BackgroundTrees() {
   );
 }
 
-export function Environment() {
+export function Environment({ quality = 'medium' }: { quality?: QualityLevel }) {
+  const showBeach = quality !== 'low';
+  const showCrowd = quality === 'high';
+  const showBackgroundTrees = quality !== 'low';
+
   return (
     <group>
       <Ground />
       <Sun />
-      <Beach />
+      {showBeach ? <Beach /> : null}
       <Fence />
 
       <BleacherSection position={[13, 0, -7]} rotation={-Math.PI / 2} />
       <BleacherSection position={[0, 0, -20]} rotation={0} />
 
-      <Crowd basePosition={[13, 0.15, -7]} rows={4} seatsPerRow={10} rowSpacing={0.8} seatSpacing={0.5} facing={-Math.PI / 2} />
-      <Crowd basePosition={[0, 0.15, -20]} rows={4} seatsPerRow={14} rowSpacing={0.8} seatSpacing={0.5} facing={0} />
+      {showCrowd ? (
+        <>
+          <Crowd basePosition={[13, 0.15, -7]} rows={4} seatsPerRow={10} rowSpacing={0.8} seatSpacing={0.5} facing={-Math.PI / 2} />
+          <Crowd basePosition={[0, 0.15, -20]} rows={4} seatsPerRow={14} rowSpacing={0.8} seatSpacing={0.5} facing={0} />
+        </>
+      ) : null}
 
-      <BackgroundTrees />
+      {showBackgroundTrees ? <BackgroundTrees /> : null}
     </group>
   );
 }

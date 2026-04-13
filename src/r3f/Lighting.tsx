@@ -2,7 +2,7 @@ export type QualityLevel = 'high' | 'medium' | 'low';
 
 const SHADOW_QUALITY: Record<QualityLevel, number> = {
   high: 2048,
-  medium: 1024,
+  medium: 1280,
   low: 512,
 };
 
@@ -21,7 +21,7 @@ export function Lighting({ shadowQuality, ambientIntensity = 0.5, quality = 'hig
 
       <directionalLight
         position={[8, 18, 5]}
-        intensity={1.3}
+        intensity={1.38}
         color="#fff5e6"
         castShadow
         shadow-mapSize-width={mapSize}
@@ -32,23 +32,24 @@ export function Lighting({ shadowQuality, ambientIntensity = 0.5, quality = 'hig
         shadow-camera-bottom={-4}
         shadow-camera-near={0.5}
         shadow-camera-far={45}
-        shadow-bias={-0.001}
+        shadow-bias={-0.00055}
+        shadow-normalBias={0.028}
       />
 
       <directionalLight
         position={[-6, 12, -8]}
-        intensity={0.35}
-        color="#e0eaff"
+        intensity={0.42}
+        color="#e8eeff"
       />
 
       <directionalLight
         position={[0, 10, -16]}
-        intensity={0.25}
-        color="#ffeedd"
+        intensity={0.32}
+        color="#fff0e0"
       />
 
       <hemisphereLight
-        args={['#87ceeb', '#8b6914', 0.3]}
+        args={['#9ec8f0', '#6b5a2a', 0.34]}
       />
     </>
   );

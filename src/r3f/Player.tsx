@@ -1,102 +1,121 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { GameRuntime } from '../engine/GameRuntime';
+import { createPlayerPose, solvePlayerPose } from './playerAnimation';
+import {
+  createHairTexture,
+  createJerseyFabricTexture,
+  createShortsFabricTexture,
+  createShoeLeatherTexture,
+  createSkinTexture,
+} from './playerTextures';
 
 interface PlayerProps {
-  position: [number, number, number];
+  runtime: GameRuntime;
   visible?: boolean;
-  animationState?: 'idle' | 'dribbling' | 'gathering' | 'shooting';
 }
 
-const SKIN_COLOR = '#f5c6a0';
-const JERSEY_COLOR = '#2563eb';
-const SHORTS_COLOR = '#1e40af';
-const SHOE_COLOR = '#1a1a2e';
-const HAIR_COLOR = '#3b2f20';
+const JERSEY_TRIM = '#f8fafc';
+const SHOE_SOLE = '#111827';
+/** Temporary: obvious hand pass so updates are visible (swap back to skin map later). */
+const HAND_DEBUG_COLOR = '#00e0ff';
 
-export function Player({ position, visible = true, animationState = 'idle' }: PlayerProps) {
+/** Shoulder socket: higher on torso + slightly wider for longer arms */
+const SHOULDER_Y = 1.3;
+const SHOULDER_X = 0.28;
+/** Upper arm capsule (radius, cylindrical length) + mesh center offset from shoulder */
+const UPPER_ARM_LEN = 0.32;
+const UPPER_ARM_R = 0.052;
+const UPPER_ARM_MESH_Y = -UPPER_ARM_LEN * 0.66;
+/** Elbow pivot distance down from shoulder (must match upper-arm reach) */
+const ELBOW_OFFSET_Y = -(UPPER_ARM_LEN * 0.95 + UPPER_ARM_R * 1.15);
+/** Forearm + hand chain */
+const FOREARM_LEN = 0.3;
+const FOREARM_R = 0.045;
+const FOREARM_MESH_Y = -FOREARM_LEN * 0.55;
+const FOREARM_TO_HAND_Y = -(FOREARM_LEN * 0.92 + FOREARM_R * 1.05);
+
+export function Player({ runtime, visible = true }: PlayerProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const bodyRef = useRef<THREE.Group>(null);
+  const torsoRef = useRef<THREE.Group>(null);
+  const headRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
+  const leftForeArmRef = useRef<THREE.Group>(null);
+  const leftHandRef = useRef<THREE.Group>(null);
   const rightArmRef = useRef<THREE.Group>(null);
+  const rightForeArmRef = useRef<THREE.Group>(null);
+  const rightHandRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Group>(null);
   const rightLegRef = useRef<THREE.Group>(null);
-  const headRef = useRef<THREE.Mesh>(null);
-  const animPhase = useRef(0);
+  const shadowRef = useRef<THREE.Mesh>(null);
+  const shadowMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const poseRef = useRef(createPlayerPose());
 
-  const shadowMat = useMemo(() => new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.25,
-    depthWrite: false,
-  }), []);
+  const jerseyMap = useMemo(() => createJerseyFabricTexture(), []);
+  const shortsMap = useMemo(() => createShortsFabricTexture(), []);
+  const skinMap = useMemo(() => createSkinTexture(), []);
+  const shoeMap = useMemo(() => createShoeLeatherTexture(), []);
+  const hairMap = useMemo(() => createHairTexture(), []);
 
   useEffect(() => {
-    return () => { shadowMat.dispose(); };
-  }, [shadowMat]);
+    return () => {
+      jerseyMap.dispose();
+      shortsMap.dispose();
+      skinMap.dispose();
+      shoeMap.dispose();
+      hairMap.dispose();
+    };
+  }, [jerseyMap, shortsMap, skinMap, shoeMap, hairMap]);
 
-  useFrame((_, delta) => {
-    if (!groupRef.current || !visible) return;
-    animPhase.current += delta;
-    const t = animPhase.current;
+  useFrame((state) => {
+    if (!visible || !groupRef.current) return;
 
-    groupRef.current.position.set(...position);
+    const snapshot = runtime.getRenderState();
+    const t = state.clock.elapsedTime;
 
-    const body = bodyRef.current;
-    const lArm = leftArmRef.current;
-    const rArm = rightArmRef.current;
-    const lLeg = leftLegRef.current;
-    const rLeg = rightLegRef.current;
+    const group = groupRef.current;
+    const torso = torsoRef.current;
     const head = headRef.current;
-    if (!body || !lArm || !rArm || !lLeg || !rLeg || !head) return;
+    const leftArm = leftArmRef.current;
+    const leftForeArm = leftForeArmRef.current;
+    const leftHand = leftHandRef.current;
+    const rightArm = rightArmRef.current;
+    const rightForeArm = rightForeArmRef.current;
+    const rightHand = rightHandRef.current;
+    const leftLeg = leftLegRef.current;
+    const rightLeg = rightLegRef.current;
 
-    body.position.y = 0;
-    body.rotation.x = 0;
-    lArm.rotation.x = 0;
-    rArm.rotation.x = 0;
-    lLeg.rotation.x = 0;
-    rLeg.rotation.x = 0;
-    head.position.y = 1.55;
+    if (!torso || !head || !leftArm || !leftForeArm || !leftHand || !rightArm || !rightForeArm || !rightHand || !leftLeg || !rightLeg) {
+      return;
+    }
 
-    switch (animationState) {
-      case 'dribbling': {
-        const bounce = Math.abs(Math.sin(t * 6)) * 0.04;
-        body.position.y = -0.05 + bounce;
-        head.position.y = 1.55 - 0.05 + bounce;
-        rArm.rotation.x = Math.sin(t * 12) * 0.4 - 0.3;
-        lArm.rotation.x = Math.sin(t * 3) * 0.1;
-        lLeg.rotation.x = Math.sin(t * 6) * 0.05;
-        rLeg.rotation.x = -Math.sin(t * 6) * 0.05;
-        break;
-      }
-      case 'gathering': {
-        body.position.y = -0.08;
-        body.rotation.x = -0.12;
-        head.position.y = 1.55 - 0.08;
-        rArm.rotation.x = -1.2 - Math.sin(t * 2) * 0.1;
-        lArm.rotation.x = -0.8 - Math.sin(t * 2) * 0.1;
-        lLeg.rotation.x = 0.15;
-        rLeg.rotation.x = 0.15;
-        break;
-      }
-      case 'shooting': {
-        const shootProgress = Math.min(1, (t % 2) * 3);
-        body.position.y = 0.05 + shootProgress * 0.1;
-        body.rotation.x = 0.05;
-        head.position.y = 1.55 + 0.05 + shootProgress * 0.1;
-        rArm.rotation.x = -2.5 + shootProgress * 0.3;
-        lArm.rotation.x = -0.4;
-        lLeg.rotation.x = -0.1;
-        rLeg.rotation.x = -0.1;
-        break;
-      }
-      default: {
-        const breathe = Math.sin(t * 1.5) * 0.01;
-        body.position.y = breathe;
-        head.position.y = 1.55 + breathe;
-        lArm.rotation.x = Math.sin(t * 1.5) * 0.03;
-        rArm.rotation.x = -Math.sin(t * 1.5) * 0.03;
-      }
+    solvePlayerPose(poseRef.current, snapshot, t);
+    const pose = poseRef.current;
+
+    group.position.set(snapshot.playerPosition[0], pose.rootY, snapshot.playerPosition[2]);
+    group.rotation.y = Math.PI + pose.bodyYaw;
+
+    torso.position.y = pose.torsoY;
+    torso.rotation.set(pose.torsoPitch, pose.torsoYaw, pose.torsoRoll);
+
+    head.position.y = pose.headY;
+    head.rotation.set(pose.headPitch, 0, pose.headRoll);
+
+    leftArm.rotation.set(pose.leftArm.x, pose.leftArm.y, pose.leftArm.z);
+    leftForeArm.rotation.set(pose.leftForeArm.x, pose.leftForeArm.y, pose.leftForeArm.z);
+    leftHand.rotation.set(pose.leftHand.x, pose.leftHand.y, pose.leftHand.z);
+    rightArm.rotation.set(pose.rightArm.x, pose.rightArm.y, pose.rightArm.z);
+    rightForeArm.rotation.set(pose.rightForeArm.x, pose.rightForeArm.y, pose.rightForeArm.z);
+    rightHand.rotation.set(pose.rightHand.x, pose.rightHand.y, pose.rightHand.z);
+    leftLeg.rotation.set(pose.leftLeg.x, pose.leftLeg.y, pose.leftLeg.z);
+    rightLeg.rotation.set(pose.rightLeg.x, pose.rightLeg.y, pose.rightLeg.z);
+
+    if (shadowRef.current) {
+      shadowRef.current.scale.set(pose.shadowScale, pose.shadowScale, 1);
+    }
+    if (shadowMaterialRef.current) {
+      shadowMaterialRef.current.opacity = pose.shadowOpacity;
     }
   });
 
@@ -104,99 +123,139 @@ export function Player({ position, visible = true, animationState = 'idle' }: Pl
 
   return (
     <group ref={groupRef}>
-      <group ref={bodyRef}>
-        {/* Torso */}
-        <mesh position={[0, 1.05, 0]} castShadow>
-          <boxGeometry args={[0.4, 0.5, 0.22]} />
-          <meshStandardMaterial color={JERSEY_COLOR} roughness={0.7} />
+      <group ref={torsoRef}>
+        <mesh position={[0, 1.03, 0]} castShadow>
+          <capsuleGeometry args={[0.16, 0.5, 8, 16]} />
+          <meshStandardMaterial map={jerseyMap} roughness={0.62} metalness={0.04} envMapIntensity={0.85} />
         </mesh>
 
-        {/* Shorts */}
-        <mesh position={[0, 0.72, 0]} castShadow>
-          <boxGeometry args={[0.38, 0.2, 0.21]} />
-          <meshStandardMaterial color={SHORTS_COLOR} roughness={0.8} />
+        <mesh position={[0, 0.82, 0.13]} castShadow>
+          <boxGeometry args={[0.14, 0.14, 0.02]} />
+          <meshStandardMaterial color={JERSEY_TRIM} roughness={0.5} />
         </mesh>
 
-        {/* Head */}
-        <mesh ref={headRef} position={[0, 1.55, 0]} castShadow>
-          <sphereGeometry args={[0.14, 16, 16]} />
-          <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+        <mesh position={[0, 0.68, 0]} castShadow>
+          <boxGeometry args={[0.38, 0.24, 0.24]} />
+          <meshStandardMaterial map={shortsMap} roughness={0.78} metalness={0.04} envMapIntensity={0.65} />
         </mesh>
 
-        {/* Hair */}
-        <mesh position={[0, 1.65, -0.02]}>
-          <sphereGeometry args={[0.13, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6]} />
-          <meshStandardMaterial color={HAIR_COLOR} roughness={0.9} />
-        </mesh>
-
-        {/* Eyes */}
-        <mesh position={[-0.04, 1.56, 0.12]}>
-          <sphereGeometry args={[0.02, 8, 8]} />
-          <meshBasicMaterial color="#1a1a1a" />
-        </mesh>
-        <mesh position={[0.04, 1.56, 0.12]}>
-          <sphereGeometry args={[0.02, 8, 8]} />
-          <meshBasicMaterial color="#1a1a1a" />
-        </mesh>
-
-        {/* Left Arm */}
-        <group ref={leftArmRef} position={[-0.28, 1.2, 0]}>
-          <mesh position={[0, -0.15, 0]} castShadow>
-            <capsuleGeometry args={[0.05, 0.25, 4, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+        <group ref={headRef} position={[0, 1.58, 0]}>
+          <mesh castShadow>
+            <sphereGeometry args={[0.15, 20, 20]} />
+            <meshStandardMaterial map={skinMap} roughness={0.58} metalness={0.02} envMapIntensity={0.5} />
           </mesh>
-          <mesh position={[0, -0.38, 0]}>
-            <sphereGeometry args={[0.04, 8, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+          <mesh position={[0, 0.05, -0.01]}>
+            <sphereGeometry args={[0.145, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
+            <meshStandardMaterial map={hairMap} roughness={0.92} metalness={0.02} envMapIntensity={0.35} />
           </mesh>
         </group>
 
-        {/* Right Arm */}
-        <group ref={rightArmRef} position={[0.28, 1.2, 0]}>
-          <mesh position={[0, -0.15, 0]} castShadow>
-            <capsuleGeometry args={[0.05, 0.25, 4, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+        <group ref={leftArmRef} position={[-SHOULDER_X, SHOULDER_Y, 0]}>
+          <mesh position={[0, UPPER_ARM_MESH_Y, 0]} castShadow>
+            <capsuleGeometry args={[UPPER_ARM_R, UPPER_ARM_LEN, 6, 10]} />
+            <meshStandardMaterial map={skinMap} roughness={0.58} metalness={0.02} envMapIntensity={0.5} />
           </mesh>
-          <mesh position={[0, -0.38, 0]}>
-            <sphereGeometry args={[0.04, 8, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+          <group ref={leftForeArmRef} position={[0, ELBOW_OFFSET_Y, 0]}>
+            <mesh position={[0, FOREARM_MESH_Y, 0]} castShadow>
+              <capsuleGeometry args={[FOREARM_R, FOREARM_LEN, 6, 10]} />
+              <meshStandardMaterial map={skinMap} roughness={0.6} metalness={0.02} envMapIntensity={0.5} />
+            </mesh>
+            <group ref={leftHandRef} position={[0, FOREARM_TO_HAND_Y, 0.018]}>
+              <mesh castShadow receiveShadow scale={[1.2, 1.55, 1.05]}>
+                <sphereGeometry args={[0.044, 16, 20]} />
+                <meshStandardMaterial
+                  color={HAND_DEBUG_COLOR}
+                  roughness={0.42}
+                  metalness={0.12}
+                  envMapIntensity={0.85}
+                />
+              </mesh>
+              <mesh position={[0.045, -0.034, 0.038]} castShadow scale={[1.1, 1.25, 1.05]}>
+                <sphereGeometry args={[0.022, 8, 8]} />
+                <meshStandardMaterial
+                  color={HAND_DEBUG_COLOR}
+                  roughness={0.44}
+                  metalness={0.1}
+                  envMapIntensity={0.8}
+                />
+              </mesh>
+            </group>
+          </group>
+        </group>
+
+        <group ref={rightArmRef} position={[SHOULDER_X, SHOULDER_Y, 0]}>
+          <mesh position={[0, UPPER_ARM_MESH_Y, 0]} castShadow>
+            <capsuleGeometry args={[UPPER_ARM_R, UPPER_ARM_LEN, 6, 10]} />
+            <meshStandardMaterial map={skinMap} roughness={0.58} metalness={0.02} envMapIntensity={0.5} />
+          </mesh>
+          <group ref={rightForeArmRef} position={[0, ELBOW_OFFSET_Y, 0]}>
+            <mesh position={[0, FOREARM_MESH_Y, 0]} castShadow>
+              <capsuleGeometry args={[FOREARM_R, FOREARM_LEN, 6, 10]} />
+              <meshStandardMaterial map={skinMap} roughness={0.6} metalness={0.02} envMapIntensity={0.5} />
+            </mesh>
+            <group ref={rightHandRef} position={[0, FOREARM_TO_HAND_Y, 0.018]}>
+              <mesh castShadow receiveShadow scale={[1.2, 1.55, 1.05]}>
+                <sphereGeometry args={[0.044, 16, 20]} />
+                <meshStandardMaterial
+                  color={HAND_DEBUG_COLOR}
+                  roughness={0.42}
+                  metalness={0.12}
+                  envMapIntensity={0.85}
+                />
+              </mesh>
+              <mesh position={[-0.045, -0.034, 0.038]} castShadow scale={[1.1, 1.25, 1.05]}>
+                <sphereGeometry args={[0.022, 8, 8]} />
+                <meshStandardMaterial
+                  color={HAND_DEBUG_COLOR}
+                  roughness={0.44}
+                  metalness={0.1}
+                  envMapIntensity={0.8}
+                />
+              </mesh>
+            </group>
+          </group>
+        </group>
+
+        <group ref={leftLegRef} position={[-0.11, 0.55, 0]}>
+          <mesh position={[0, -0.22, 0]} castShadow>
+            <capsuleGeometry args={[0.06, 0.34, 6, 10]} />
+            <meshStandardMaterial map={skinMap} roughness={0.6} metalness={0.02} envMapIntensity={0.5} />
+          </mesh>
+          <mesh position={[0, -0.46, 0.03]} castShadow>
+            <boxGeometry args={[0.14, 0.08, 0.24]} />
+            <meshStandardMaterial map={shoeMap} roughness={0.52} metalness={0.07} envMapIntensity={0.55} />
+          </mesh>
+          <mesh position={[0, -0.49, 0.07]}>
+            <boxGeometry args={[0.14, 0.03, 0.22]} />
+            <meshStandardMaterial color={SHOE_SOLE} roughness={0.95} />
           </mesh>
         </group>
 
-        {/* Left Leg */}
-        <group ref={leftLegRef} position={[-0.1, 0.6, 0]}>
-          <mesh position={[0, -0.2, 0]} castShadow>
-            <capsuleGeometry args={[0.06, 0.3, 4, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
+        <group ref={rightLegRef} position={[0.11, 0.55, 0]}>
+          <mesh position={[0, -0.22, 0]} castShadow>
+            <capsuleGeometry args={[0.06, 0.34, 6, 10]} />
+            <meshStandardMaterial map={skinMap} roughness={0.6} metalness={0.02} envMapIntensity={0.5} />
           </mesh>
-          <mesh position={[0, -0.42, 0.03]}>
-            <boxGeometry args={[0.1, 0.08, 0.16]} />
-            <meshStandardMaterial color={SHOE_COLOR} roughness={0.5} />
+          <mesh position={[0, -0.46, 0.03]} castShadow>
+            <boxGeometry args={[0.14, 0.08, 0.24]} />
+            <meshStandardMaterial map={shoeMap} roughness={0.52} metalness={0.07} envMapIntensity={0.55} />
           </mesh>
-        </group>
-
-        {/* Right Leg */}
-        <group ref={rightLegRef} position={[0.1, 0.6, 0]}>
-          <mesh position={[0, -0.2, 0]} castShadow>
-            <capsuleGeometry args={[0.06, 0.3, 4, 8]} />
-            <meshStandardMaterial color={SKIN_COLOR} roughness={0.6} />
-          </mesh>
-          <mesh position={[0, -0.42, 0.03]}>
-            <boxGeometry args={[0.1, 0.08, 0.16]} />
-            <meshStandardMaterial color={SHOE_COLOR} roughness={0.5} />
+          <mesh position={[0, -0.49, 0.07]}>
+            <boxGeometry args={[0.14, 0.03, 0.22]} />
+            <meshStandardMaterial color={SHOE_SOLE} roughness={0.95} />
           </mesh>
         </group>
-
-        {/* Jersey number */}
-        <mesh position={[0, 1.08, 0.115]}>
-          <planeGeometry args={[0.12, 0.12]} />
-          <meshBasicMaterial color="white" transparent opacity={0.9} />
-        </mesh>
       </group>
 
-      {/* Ground shadow */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} material={shadowMat}>
-        <circleGeometry args={[0.4, 24]} />
+      <mesh ref={shadowRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
+        <circleGeometry args={[0.42, 24]} />
+        <meshBasicMaterial
+          ref={shadowMaterialRef}
+          color={0x000000}
+          transparent
+          opacity={0.2}
+          depthWrite={false}
+        />
       </mesh>
     </group>
   );

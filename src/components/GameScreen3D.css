@@ -4,6 +4,37 @@
   position: relative;
 }
 
+/* Full-bleed R3F canvas + front-view PiP label (WebGL inset is top-right of canvas) */
+.r3f-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.front-view-pip-hud {
+  position: absolute;
+  top: 88px;
+  right: 14px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.front-view-pip-hud__title {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.92);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
 /* === Score HUD === */
 .hud-score {
   position: absolute;
@@ -85,83 +116,6 @@
   text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.6);
 }
 
-/* === Timer === */
-.hud-timer {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  font-family: var(--font-display);
-  font-size: 36px;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  padding: 4px 18px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 2;
-  transition: color var(--duration-normal) var(--ease-out);
-}
-
-.hud-timer--warning {
-  color: var(--color-error);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.hud-timer--normal {
-  color: var(--text-primary);
-}
-
-/* === Game Over Overlay === */
-.game-over {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  animation: fadeIn var(--duration-slow) var(--ease-out);
-}
-
-.game-over__title {
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 72px;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  letter-spacing: 4px;
-}
-
-.game-over__stats {
-  color: var(--color-primary);
-  font-family: var(--font-display);
-  font-size: 42px;
-  margin-top: 12px;
-}
-
-.game-over__btn {
-  margin-top: 28px;
-  padding: 14px 40px;
-  font-size: 18px;
-  font-family: var(--font-body);
-  font-weight: 600;
-  background: var(--color-primary);
-  color: var(--text-primary);
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--duration-normal) var(--ease-out);
-  box-shadow: 0 4px 20px var(--color-primary-glow);
-}
-
-.game-over__btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow-strong);
-}
-
 /* === Shot Meter === */
 .shot-meter {
   position: absolute;
@@ -205,7 +159,8 @@
   height: 4px;
   transform: translateY(50%);
   border-radius: 2px;
-  transition: background 0.06s, box-shadow 0.06s;
+  transition: background 0.08s ease-out, box-shadow 0.08s ease-out;
+  contain: layout;
 }
 
 .shot-meter__indicator--sweet {
@@ -294,6 +249,56 @@
   font-family: var(--font-mono);
   font-size: 11px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.debug-panel {
+  position: absolute;
+  top: 74px;
+  right: 20px;
+  min-width: 250px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  background: rgba(5, 10, 18, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  z-index: 2;
+}
+
+.debug-panel__title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+  color: #f8fafc;
+}
+
+.debug-panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.debug-panel__row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.debug-panel__row span {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.debug-panel__row b {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  color: #f8fafc;
 }
 
 /* === Back Button === */

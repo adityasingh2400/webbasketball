@@ -12,10 +12,6 @@ type NormalizedLandmarkPoint = { x: number; y: number; z: number; visibility: nu
 
 const LANDMARK_INDEX = {
   WRIST: 0,
-  INDEX_TIP: 8,
-  INDEX_PIP: 6,
-  MIDDLE_TIP: 12,
-  MIDDLE_PIP: 10,
 } as const;
 
 const WASM_BASE_PATH =
@@ -26,7 +22,7 @@ const MODEL_ASSET_PATH =
 const MIN_HAND_DETECTION_CONFIDENCE = 0.7;
 const MIN_HAND_PRESENCE_CONFIDENCE = 0.7;
 const MIN_TRACKING_CONFIDENCE = 0.7;
-const MAX_HANDS = 2;
+const MAX_HANDS = 1;
 
 export class HandTracker {
   private handLandmarker: HandLandmarker | null = null;
@@ -114,31 +110,20 @@ export class HandTracker {
           const wrist = this.landmarkToVector2(
             handLandmarks[LANDMARK_INDEX.WRIST],
           );
-          const indexTip = this.landmarkToVector2(
-            handLandmarks[LANDMARK_INDEX.INDEX_TIP],
-          );
-
           const handednessCategory = result.handedness[handIndex]?.[0];
           const handedness: 'Left' | 'Right' =
             handednessCategory?.categoryName === 'Left' ? 'Left' : 'Right';
-          const confidence = handednessCategory?.score ?? 0;
-
-          const fingerExtension =
-            this.calculateFingerExtension(handLandmarks);
 
           return {
             landmarks,
             handedness,
-            confidence,
             wrist,
-            indexTip,
-            fingerExtension,
           };
         },
       );
 
       return { timestamp, hands, isTracking: true };
-    } catch (_error: unknown) {
+    } catch {
       this.updateState({
         error: 'Frame processing failed',
         isTracking: false,
@@ -173,25 +158,5 @@ export class HandTracker {
 
   private landmarkToVector2(landmark: { x: number; y: number }): Vector2 {
     return { x: landmark.x, y: landmark.y };
-  }
-
-  /**
-   * Average extension of index + middle fingers.
-   * Extension = PIP.y - TIP.y (positive = fingertip above PIP in image coords where y=0 is top).
-   * Result clamped to [0, 1].
-   */
-  private calculateFingerExtension(
-    landmarks: NormalizedLandmarkPoint[],
-  ): number {
-    const indexTip = landmarks[LANDMARK_INDEX.INDEX_TIP];
-    const indexPip = landmarks[LANDMARK_INDEX.INDEX_PIP];
-    const middleTip = landmarks[LANDMARK_INDEX.MIDDLE_TIP];
-    const middlePip = landmarks[LANDMARK_INDEX.MIDDLE_PIP];
-
-    const indexExtension = indexPip.y - indexTip.y;
-    const middleExtension = middlePip.y - middleTip.y;
-
-    const averageExtension = (indexExtension + middleExtension) / 2;
-    return Math.max(0, Math.min(1, averageExtension));
   }
 }

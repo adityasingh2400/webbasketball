@@ -1,43 +1,54 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameCanvas } from '../r3f';
 import { useWebcam } from '../hooks/useWebcam';
 import { useHandTracking3D } from '../hooks/useHandTracking3D';
-import { BallStateMachine } from '../engine/BallStateMachine';
-import type { BallInput, BallHandlingState } from '../engine/BallStateMachine';
-import { ShotArc } from '../engine/ShotArc';
+import { GameRuntime } from '../engine/GameRuntime';
+import type { RuntimeControls } from '../engine/GameRuntime';
 import type { HandLandmark } from '../types';
+import type { RenderDiagnostics } from '../r3f/GameCanvas';
 import type { QualityLevel } from '../r3f/Lighting';
 import './GameScreen3D.css';
 
 interface GameScreen3DProps {
-  mode?: 'freeplay' | 'timed' | 'streak';
   onBack?: () => void;
-  onGameEnd?: (score: number, streak: number) => void;
+  onGameEnd?: (score: number) => void;
 }
 
-const AUTO_WALK_SPEED = 1.2;
-const HOOP_Z = -13;
-const STOP_DISTANCE = 6;
-const COURT_HALF_W = 7.12;
-const COURT_Z_MIN = -13.8;
-const COURT_Z_MAX = -0.5;
-const SHOT_METER_SPEED_MIN = 0.55;
-const SHOT_METER_SPEED_MAX = 1.4;
-const SHOT_METER_RAMP_TIME = 3;
+interface DebugPanelState {
+  renderFps: number;
+  renderFrameMs: number;
+  drawCalls: number;
+  triangles: number;
+  trackingFps: number;
+  trackingProcessMs: number;
+  trackingHasHand: boolean;
+  simFps: number;
+  simFrameMs: number;
+  simSteps: number;
+  droppedAdvances: number;
+  moveLocked: boolean;
+  shotCharge: number;
+  ballState: string;
+  animationState: string;
+}
+
 const SWEET_SPOT_SIZE = 0.15;
 const SWEET_SPOT_TOP = 1.0;
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
+function formatBallStateLabel(state: string): string {
+  return state
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 const HAND_CONNECTIONS: [number, number][] = [
-  [0,1],[1,2],[2,3],[3,4],
-  [0,5],[5,6],[6,7],[7,8],
-  [0,9],[9,10],[10,11],[11,12],
-  [0,13],[13,14],[14,15],[15,16],
-  [0,17],[17,18],[18,19],[19,20],
-  [5,9],[9,13],[13,17],
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [0, 9], [9, 10], [10, 11], [11, 12],
+  [0, 13], [13, 14], [14, 15], [15, 16],
+  [0, 17], [17, 18], [18, 19], [19, 20],
+  [5, 9], [9, 13], [13, 17],
 ];
 
 function drawHandSkeleton(
@@ -49,6 +60,7 @@ function drawHandSkeleton(
   ctx.clearRect(0, 0, width, height);
   ctx.strokeStyle = '#00ff88';
   ctx.lineWidth = 2;
+
   for (const [a, b] of HAND_CONNECTIONS) {
     const la = landmarks[a];
     const lb = landmarks[b];
@@ -58,6 +70,7 @@ function drawHandSkeleton(
     ctx.lineTo((1 - lb.x) * width, lb.y * height);
     ctx.stroke();
   }
+
   ctx.fillStyle = '#00ff88';
   for (const lm of landmarks) {
     ctx.beginPath();
@@ -84,40 +97,42 @@ function ShotMeter({ value, isVisible }: { value: number; isVisible: boolean }) 
   );
 }
 
-export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: GameScreen3DProps) {
-  const [playerPosition, setPlayerPosition] = useState<[number, number, number]>([0, 0, -4]);
-  const [ballPosition, setBallPosition] = useState<[number, number, number]>([0.3, 0.8, -4]);
-  const [animationState, setAnimationState] = useState<'idle' | 'dribbling' | 'gathering' | 'shooting'>('idle');
-  const [isDribbling, setIsDribbling] = useState(false);
-  const [score, setScore] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
-  const [ballState, setBallState] = useState<BallHandlingState>('IDLE');
+export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
+  const runtime = useMemo(() => new GameRuntime(), []);
+  const [ui, setUi] = useState(() => runtime.getUiState());
   const [webcamActive, setWebcamActive] = useState(false);
-  const [quality, setQuality] = useState<QualityLevel>('high');
-  const [shotMeterValue, setShotMeterValue] = useState(0);
-  const [shotMeterVisible, setShotMeterVisible] = useState(false);
-  const [shotResult, setShotResult] = useState<string | null>(null);
-  const [jumpProgress, setJumpProgress] = useState(0);
-  const shotMeterValueRef = useRef(0);
-  const [netSwish, setNetSwish] = useState(false);
-  const [isPerfectSwish, setIsPerfectSwish] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(mode === 'timed' ? 60 : null);
-  const [gameOver, setGameOver] = useState(false);
-  const hasAttemptedShot = useRef(false);
-  const streakRef = useRef(0);
+  const [quality, setQuality] = useState<QualityLevel>('medium');
+  const [showDebug, setShowDebug] = useState(() => import.meta.env.DEV);
+  const [debug, setDebug] = useState<DebugPanelState>(() => ({
+    renderFps: 0,
+    renderFrameMs: 0,
+    drawCalls: 0,
+    triangles: 0,
+    trackingFps: 0,
+    trackingProcessMs: 0,
+    trackingHasHand: false,
+    simFps: 120,
+    simFrameMs: 8.33,
+    simSteps: 0,
+    droppedAdvances: 0,
+    moveLocked: false,
+    shotCharge: 0,
+    ballState: 'IDLE',
+    animationState: 'idle',
+  }));
 
-  const ballSM = useRef(new BallStateMachine());
-  const shotArc = useRef(new ShotArc());
   const keysPressed = useRef<Set<string>>(new Set());
-  const smoothedPlayerPos = useRef({ x: 0, z: -4 });
+  const shootHeld = useRef(false);
+  const shootReleased = useRef(false);
+  const renderDiagnosticsRef = useRef<RenderDiagnostics>({
+    fps: 0,
+    frameMs: 0,
+    drawCalls: 0,
+    triangles: 0,
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const gatherStartTime = useRef(0);
-  const shotMeterStopped = useRef<number | null>(null);
-  const fHeld = useRef(false);
-  const fJustReleased = useRef(false);
 
   const { startWebcam, stopWebcam } = useWebcam();
   const {
@@ -126,7 +141,29 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
     start: startTracking,
     stop: stopTracking,
     getHandData,
+    getDiagnostics,
   } = useHandTracking3D();
+
+  useEffect(() => {
+    return runtime.subscribeUi(setUi);
+  }, [runtime]);
+
+  const stopWebcamMode = useCallback(() => {
+    stopTracking();
+    stopWebcam();
+    setWebcamActive(false);
+
+    if (videoRef.current) {
+      videoRef.current.remove();
+      videoRef.current = null;
+    }
+
+    const canvas = skeletonCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, [stopTracking, stopWebcam]);
 
   const startWebcamMode = useCallback(async () => {
     const video = document.createElement('video');
@@ -153,359 +190,200 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
     });
   }, [startWebcam, initTracking, startTracking]);
 
-  const stopWebcamMode = useCallback(() => {
-    stopTracking();
-    stopWebcam();
-    setWebcamActive(false);
-    if (videoRef.current) {
-      videoRef.current.remove();
-      videoRef.current = null;
-    }
-  }, [stopTracking, stopWebcam]);
-
   useEffect(() => {
-    const sm = ballSM.current;
-    const unsub = sm.onTransition((from, to) => {
-      setBallState(to);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      keysPressed.current.add(key);
 
-      if (to === 'GATHER_LOW') {
-        gatherStartTime.current = performance.now();
-        shotMeterStopped.current = null;
-        setShotMeterVisible(true);
-      }
-
-      if (to === 'SHOOTING' && (from === 'GATHER_HIGH' || from === 'GATHER_LOW')) {
-        shotMeterStopped.current = shotMeterValueRef.current;
-        setShotMeterVisible(false);
-      }
-
-      if (to === 'FOLLOW_THROUGH' && from === 'SHOOTING') {
-        const pos: [number, number, number] = [
-          smoothedPlayerPos.current.x,
-          1.7,
-          smoothedPlayerPos.current.z,
-        ];
-        const hand = getHandData();
-        const power = Math.min(1, Math.abs(hand.velocity.y) * 2);
-
-        const sweetSpotStart = SWEET_SPOT_TOP - SWEET_SPOT_SIZE;
-        const stoppedValue = shotMeterStopped.current ?? 0.5;
-        const isGreen = stoppedValue >= sweetSpotStart && stoppedValue <= SWEET_SPOT_TOP;
-        let accuracyBonus = 0;
-        if (isGreen) {
-          accuracyBonus = 1.0;
-        } else {
-          accuracyBonus = -(sweetSpotStart - stoppedValue) * 0.7;
+      if (key === 'f') {
+        event.preventDefault();
+        if (!shootHeld.current) {
+          shootHeld.current = true;
+          shootReleased.current = false;
         }
-
-        shotArc.current.launch(pos, Math.max(0.4, power), accuracyBonus, isGreen);
       }
 
-      if (to === 'SHOOTING' || to === 'FOLLOW_THROUGH') {
-        setAnimationState('shooting');
+      if (event.repeat) return;
+
+      if (key === 'c') {
+        if (webcamActive) stopWebcamMode();
+        else void startWebcamMode();
       }
 
-      if (!['GATHER_LOW', 'GATHER_HIGH'].includes(to)) {
-        setShotMeterVisible(false);
+      if (key === 'q') {
+        setQuality((previous) => previous === 'high' ? 'medium' : previous === 'medium' ? 'low' : 'high');
       }
 
-      if ((from === 'BOUNCE' || from === 'DEAD') && to === 'IDLE') {
-        shotArc.current.reset();
-        setShotResult(null);
+      if (key === 'p') {
+        setShowDebug((previous) => !previous);
       }
-    });
+    };
 
-    return unsub;
-  }, [getHandData]);
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      keysPressed.current.delete(key);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    keysPressed.current.add(e.key.toLowerCase());
-    if (e.key.toLowerCase() === 'f' && !fHeld.current) {
-      fHeld.current = true;
-      fJustReleased.current = false;
-    }
-    if (e.key === 'c') {
-      if (!webcamActive) startWebcamMode();
-      else stopWebcamMode();
-    }
-    if (e.key === 'q') {
-      setQuality(prev => prev === 'high' ? 'medium' : prev === 'medium' ? 'low' : 'high');
-    }
-  }, [webcamActive, startWebcamMode, stopWebcamMode]);
+      if (key === 'f') {
+        event.preventDefault();
+        if (shootHeld.current) {
+          shootHeld.current = false;
+          shootReleased.current = true;
+        }
+      }
+    };
 
-  const handleKeyUp = useCallback((e: KeyboardEvent) => {
-    keysPressed.current.delete(e.key.toLowerCase());
-    if (e.key.toLowerCase() === 'f' && fHeld.current) {
-      fHeld.current = false;
-      fJustReleased.current = true;
-    }
-  }, []);
-
-  useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [handleKeyDown, handleKeyUp]);
+  }, [startWebcamMode, stopWebcamMode, webcamActive]);
 
   useEffect(() => {
-    if (mode !== 'timed' || gameOver) return;
-    const interval = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev === null || prev <= 0) {
-          clearInterval(interval);
-          setGameOver(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [mode, gameOver]);
+    if (!webcamActive) return;
 
-  useEffect(() => {
-    let lastTime = performance.now();
-    let rafHandle = 0;
-    let running = true;
+    let frameHandle = 0;
+    const drawLoop = () => {
+      const canvas = skeletonCanvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      const hand = getHandData();
 
-    const gameLoop = () => {
-      if (!running) return;
-      const now = performance.now();
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
-      lastTime = now;
-
-      const sm = ballSM.current;
-      const arc = shotArc.current;
-
-      let targetX = smoothedPlayerPos.current.x;
-      let targetZ = smoothedPlayerPos.current.z;
-
-      if (webcamActive) {
-        const hand = getHandData();
-        if (hand.rawHand) {
-          const distToHoop = Math.abs(targetZ - HOOP_Z);
-          if (distToHoop > STOP_DISTANCE && !sm.isShooting() && !arc.isActive()) {
-            targetZ -= AUTO_WALK_SPEED * dt;
-          }
-
-          const input: BallInput = {
-            handX: hand.handNormalized.x,
-            handY: hand.handNormalized.y,
-            velocityX: hand.velocity.x,
-            velocityY: hand.velocity.y,
-            fingerExtension: hand.fingerExtension,
-            handSide: hand.handedness === 'Left' ? 'left' : 'right',
-            released: hand.release !== null,
-            timeSinceStateEnter: sm.getStateTime(),
-            twoGateRelease: hand.twoGateRelease,
-          };
-
-          sm.update(dt, input);
-
-          if (skeletonCanvasRef.current && hand.rawHand.landmarks.length > 0) {
-            const canvas = skeletonCanvasRef.current;
-            const ctx = canvas.getContext('2d');
-            if (ctx) drawHandSkeleton(ctx, hand.rawHand.landmarks, canvas.width, canvas.height);
-          }
+      if (ctx && canvas) {
+        if (hand.rawHand && hand.rawHand.landmarks.length > 0) {
+          drawHandSkeleton(ctx, hand.rawHand.landmarks, canvas.width, canvas.height);
         } else {
-          if (skeletonCanvasRef.current) {
-            const ctx = skeletonCanvasRef.current.getContext('2d');
-            if (ctx) ctx.clearRect(0, 0, skeletonCanvasRef.current.width, skeletonCanvasRef.current.height);
-          }
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
-      } else {
-        const moveSpeed = 5;
-        if (keysPressed.current.has('arrowup') || keysPressed.current.has('w')) targetZ -= moveSpeed * dt;
-        if (keysPressed.current.has('arrowdown') || keysPressed.current.has('s')) targetZ += moveSpeed * dt;
-        if (keysPressed.current.has('arrowleft') || keysPressed.current.has('a')) targetX -= moveSpeed * dt;
-        if (keysPressed.current.has('arrowright') || keysPressed.current.has('d')) targetX += moveSpeed * dt;
-
-        targetX = Math.max(-COURT_HALF_W, Math.min(COURT_HALF_W, targetX));
-        targetZ = Math.max(COURT_Z_MIN, Math.min(COURT_Z_MAX, targetZ));
-
-        const holdingF = fHeld.current;
-        const releasedF = fJustReleased.current;
-        if (releasedF) fJustReleased.current = false;
-
-        const isInGather = sm.isGathering();
-        const isInShoot = sm.isShooting();
-
-        const kbInput: BallInput = {
-          handX: 0.5,
-          handY: 0.5,
-          velocityX: keysPressed.current.has('a') ? -0.6 : keysPressed.current.has('d') ? 0.6 : 0,
-          velocityY: holdingF && !isInGather && !isInShoot ? -0.8 : keysPressed.current.has('e') ? 0.5 : 0,
-          fingerExtension: releasedF && isInGather ? 0.2 : 0,
-          handSide: 'right',
-          released: releasedF && isInGather,
-          timeSinceStateEnter: sm.getStateTime(),
-          twoGateRelease: releasedF && isInGather,
-        };
-
-        sm.update(dt, kbInput);
       }
 
-      const smoothFactor = 1 - Math.exp(-8 * dt);
-      smoothedPlayerPos.current.x = lerp(smoothedPlayerPos.current.x, targetX, smoothFactor);
-      smoothedPlayerPos.current.z = lerp(smoothedPlayerPos.current.z, targetZ, smoothFactor);
-
-      smoothedPlayerPos.current.x = Math.max(-COURT_HALF_W, Math.min(COURT_HALF_W, smoothedPlayerPos.current.x));
-      smoothedPlayerPos.current.z = Math.max(COURT_Z_MIN, Math.min(COURT_Z_MAX, smoothedPlayerPos.current.z));
-
-      const px = smoothedPlayerPos.current.x;
-      const pz = smoothedPlayerPos.current.z;
-      setPlayerPosition([px, 0, pz]);
-
-      if (sm.isGathering()) {
-        const elapsed = (now - gatherStartTime.current) / 1000;
-        const speed = SHOT_METER_SPEED_MIN + (SHOT_METER_SPEED_MAX - SHOT_METER_SPEED_MIN) *
-          Math.min(1, elapsed / SHOT_METER_RAMP_TIME);
-        const val = Math.min(1, elapsed * speed);
-        shotMeterValueRef.current = val;
-        setShotMeterValue(val);
-        setJumpProgress(val);
-      } else if (!sm.isShooting()) {
-        setJumpProgress(0);
-      }
-
-      const snapshot = sm.getSnapshot();
-      const config = snapshot.config;
-
-      setIsDribbling(sm.isDribbling());
-
-      if (arc.isActive()) {
-        const arcState = arc.update(dt);
-        setBallPosition(arcState.position as [number, number, number]);
-        setAnimationState('shooting');
-
-        if (arcState.landed) {
-          if (arcState.madeBasket) {
-            setScore(s => s + 1);
-            setStreak(s => {
-              const newStreak = s + 1;
-              streakRef.current = newStreak;
-              setBestStreak(prev => Math.max(prev, newStreak));
-              return newStreak;
-            });
-            const wasPerfect = arc.isPerfect();
-            setShotResult(wasPerfect ? 'GREEN!' : arcState.hitRim || arcState.hitBackboard ? 'Bank!' : 'Swish!');
-            setIsPerfectSwish(wasPerfect);
-            setNetSwish(true);
-            setTimeout(() => { setNetSwish(false); setIsPerfectSwish(false); }, 800);
-            sm.forceTransition('DEAD');
-          } else {
-            if (mode === 'streak' && hasAttemptedShot.current && streakRef.current > 0) {
-              setGameOver(true);
-            }
-            setStreak(0);
-            streakRef.current = 0;
-            setShotResult(arcState.hitRim ? 'Rim Out' : arcState.hitBackboard ? 'Off Board' : 'Airball');
-            sm.forceTransition('BOUNCE');
-          }
-          hasAttemptedShot.current = true;
-        }
-      } else {
-        setAnimationState(config.playerAnim);
-
-        const blend = snapshot.blendFactor;
-        const prev = snapshot.previousConfig;
-
-        let bx = config.ballOffset.x;
-        let by = config.ballOffset.y;
-        let bz = config.ballOffset.z;
-
-        if (prev && blend < 1) {
-          bx = prev.ballOffset.x + (bx - prev.ballOffset.x) * blend;
-          by = prev.ballOffset.y + (by - prev.ballOffset.y) * blend;
-          bz = prev.ballOffset.z + (bz - prev.ballOffset.z) * blend;
-        }
-
-        if (config.ballBounce) {
-          const phase = snapshot.stateTime * config.ballBounce.frequency * Math.PI * 2;
-          by += Math.abs(Math.sin(phase)) * config.ballBounce.amplitude;
-        }
-
-        setBallPosition([px + bx, by, pz + bz]);
-      }
-
-      rafHandle = requestAnimationFrame(gameLoop);
+      frameHandle = requestAnimationFrame(drawLoop);
     };
 
-    rafHandle = requestAnimationFrame(gameLoop);
-    return () => {
-      running = false;
-      cancelAnimationFrame(rafHandle);
-    };
-  }, [webcamActive, getHandData]);
+    frameHandle = requestAnimationFrame(drawLoop);
+    return () => cancelAnimationFrame(frameHandle);
+  }, [getHandData, webcamActive]);
 
   useEffect(() => {
-    return () => { stopWebcamMode(); };
+    return () => {
+      stopWebcamMode();
+    };
   }, [stopWebcamMode]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const sim = runtime.getDebugState();
+      const tracking = getDiagnostics();
+      const render = renderDiagnosticsRef.current;
+
+      setDebug({
+        renderFps: render.fps,
+        renderFrameMs: render.frameMs,
+        drawCalls: render.drawCalls,
+        triangles: render.triangles,
+        trackingFps: tracking.sampleFps,
+        trackingProcessMs: tracking.processMs,
+        trackingHasHand: tracking.hasHand,
+        simFps: sim.simFps,
+        simFrameMs: sim.simFrameMs,
+        simSteps: sim.simSteps,
+        droppedAdvances: sim.droppedAdvances,
+        moveLocked: sim.moveLocked,
+        shotCharge: sim.shotCharge,
+        ballState: sim.ballState,
+        animationState: sim.animationState,
+      });
+    }, 200);
+
+    return () => window.clearInterval(timer);
+  }, [getDiagnostics, runtime]);
+
+  const handleRenderSample = useCallback((sample: RenderDiagnostics) => {
+    renderDiagnosticsRef.current = sample;
+  }, []);
+
+  const getControls = useCallback((): RuntimeControls => {
+    let moveX = (keysPressed.current.has('arrowright') || keysPressed.current.has('d') ? 1 : 0)
+      - (keysPressed.current.has('arrowleft') || keysPressed.current.has('a') ? 1 : 0);
+    let moveZ = (keysPressed.current.has('arrowdown') || keysPressed.current.has('s') ? 1 : 0)
+      - (keysPressed.current.has('arrowup') || keysPressed.current.has('w') ? 1 : 0);
+    const moveMagnitude = Math.hypot(moveX, moveZ);
+    if (moveMagnitude > 1) {
+      moveX /= moveMagnitude;
+      moveZ /= moveMagnitude;
+    }
+
+    const releasedNow = shootReleased.current;
+    shootReleased.current = false;
+
+    const hand = getHandData();
+
+    return {
+      webcamActive,
+      hand: {
+        hasHand: Boolean(hand.rawHand),
+        playerX: hand.playerX,
+        playerZ: hand.playerZ,
+        velocity: hand.velocity,
+        handedness: hand.handedness,
+        released: hand.released,
+      },
+      moveX,
+      moveZ,
+      dribblePressed: keysPressed.current.has('e'),
+      shootHeld: shootHeld.current,
+      shootReleased: releasedNow,
+    };
+  }, [getHandData, webcamActive]);
+
+  const handleExit = useCallback(() => {
+    onGameEnd?.(ui.score);
+    onBack?.();
+  }, [onBack, onGameEnd, ui.score]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleExit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleExit]);
 
   return (
     <div className="game-screen">
       <GameCanvas
-        playerPosition={playerPosition}
-        ballPosition={ballPosition}
-        ballVisible={true}
-        isDribbling={isDribbling}
-        animationState={animationState}
-        triggerNetSwish={netSwish}
-        isPerfectSwish={isPerfectSwish}
-        jumpProgress={jumpProgress}
+        runtime={runtime}
+        getControls={getControls}
         quality={quality}
+        onRenderSample={handleRenderSample}
       />
 
       <div className="hud-score">
-        <span>{score}</span>
-        {streak >= 3 && (
-          <span className="hud-score__streak">
-            🔥 {streak}
-          </span>
-        )}
+        <span>{ui.score}</span>
+        {ui.streak >= 3 ? <span className="hud-score__streak">🔥 {ui.streak}</span> : null}
       </div>
 
-      <div className="hud-state">{ballState}</div>
+      <div className="hud-state" aria-live="polite">
+        {formatBallStateLabel(ui.ballState)}
+      </div>
 
-      {shotResult && (
+      {ui.shotResult ? (
         <div className={`shot-result ${
-          shotResult === 'GREEN!' ? 'shot-result--green' :
-          shotResult.includes('Swish') || shotResult.includes('Bank') ? 'shot-result--make' :
+          ui.shotResult === 'GREEN!' ? 'shot-result--green' :
+          ui.shotResult.includes('Swish') || ui.shotResult.includes('Bank') ? 'shot-result--make' :
           'shot-result--miss'
         }`}>
-          {shotResult}
+          {ui.shotResult}
         </div>
-      )}
+      ) : null}
 
-      {timeRemaining !== null && (
-        <div className={`hud-timer ${timeRemaining <= 10 ? 'hud-timer--warning' : 'hud-timer--normal'}`}>
-          {timeRemaining}s
-        </div>
-      )}
+      <ShotMeter value={ui.shotMeterValue} isVisible={ui.shotMeterVisible} />
 
-      {gameOver && (
-        <div className="game-over">
-          <div className="game-over__title">Game Over</div>
-          <div className="game-over__stats">
-            Score: {score} | Best Streak: {bestStreak}
-          </div>
-          <button
-            className="game-over__btn"
-            onClick={() => {
-              onGameEnd?.(score, bestStreak);
-              onBack?.();
-            }}
-          >
-            Back to Menu
-          </button>
-        </div>
-      )}
-
-      <ShotMeter value={shotMeterValue} isVisible={shotMeterVisible} />
-
-      {webcamActive && (
+      {webcamActive ? (
         <div className="webcam-pip">
           <video
             ref={pipVideoRef}
@@ -522,40 +400,79 @@ export default function GameScreen3D({ mode = 'freeplay', onBack, onGameEnd }: G
           />
           <div className={`webcam-pip__status ${trackingState.isTracking ? 'webcam-pip__status--active' : 'webcam-pip__status--inactive'}`} />
         </div>
-      )}
+      ) : null}
 
       <div className="controls-panel">
         {webcamActive ? (
           <>
-            <div>🏃 Auto-walk to hoop</div>
-            <div>✊ Hold hand still = dribble</div>
-            <div>↔️ Quick swipe = crossover</div>
-            <div>👆 Raise + flick = shoot</div>
+            <div>🏃 Auto-run to the lane</div>
+            <div>↔️ Hand position steers left/right</div>
+            <div>✊ Hold steady to keep the dribble alive</div>
+            <div>👆 Raise and flick to shoot</div>
             <div><kbd>C</kbd> Disable webcam</div>
             <div><kbd>Q</kbd> Quality: {quality}</div>
+            <div><kbd>P</kbd> Debug HUD</div>
           </>
         ) : (
           <>
             <div><b>WASD</b> Move</div>
             <div><b>E</b> Dribble</div>
-            <div><b>Hold F</b> Jump shot (release in green)</div>
+            <div><b>Hold F</b> Start jump shot</div>
+            <div><b>Release F</b> Fire the shot</div>
             <div><kbd>C</kbd> Enable webcam</div>
             <div><kbd>Q</kbd> Quality: {quality}</div>
+            <div><kbd>P</kbd> Debug HUD</div>
           </>
         )}
       </div>
 
-      {onBack && (
-        <button
-          className="hud-back"
-          onClick={() => {
-            onGameEnd?.(score, bestStreak);
-            onBack();
-          }}
-        >
+      {showDebug ? (
+        <div className="debug-panel">
+          <div className="debug-panel__title">Diagnostics</div>
+          <div className="debug-panel__row">
+            <span>Render</span>
+            <b>{debug.renderFps.toFixed(0)} fps / {debug.renderFrameMs.toFixed(1)} ms</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>Sim</span>
+            <b>{debug.simFps.toFixed(0)} fps / {debug.simFrameMs.toFixed(1)} ms / {debug.simSteps} steps</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>Tracking</span>
+            <b>{webcamActive ? `${debug.trackingFps.toFixed(0)} fps / ${debug.trackingProcessMs.toFixed(1)} ms` : 'off'}</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>GPU</span>
+            <b>{debug.drawCalls} calls / {(debug.triangles / 1000).toFixed(0)}k tris</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>State</span>
+            <b>{debug.ballState} / {debug.animationState}</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>Flags</span>
+            <b>
+              {debug.moveLocked ? 'move-locked' : 'free'}
+              {' / '}
+              {webcamActive ? (debug.trackingHasHand ? 'hand-live' : 'no-hand') : 'keyboard'}
+            </b>
+          </div>
+          <div className="debug-panel__row">
+            <span>Shot</span>
+            <b>{(debug.shotCharge * 100).toFixed(0)}%</b>
+          </div>
+          <div className="debug-panel__row">
+            <span>Quality</span>
+            <b>{quality}</b>
+          </div>
+        </div>
+      ) : null}
+
+      {onBack ? (
+        <button className="hud-back" onClick={handleExit}>
           ← Back
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

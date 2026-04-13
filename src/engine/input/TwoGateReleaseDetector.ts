@@ -13,17 +13,10 @@ const UPWARD_FRAME_THRESHOLD = 3;
 const VELOCITY_REVERSAL_THRESHOLD = 0.1;
 const UPWARD_VELOCITY_THRESHOLD = -0.15;
 
-interface FrameState {
-  handY: number;
-  velocityY: number;
-  timestamp: number;
-}
-
 export class TwoGateReleaseDetector {
   private calibration: CalibrationData;
   private upwardFrameCount = 0;
   private wasRising = false;
-  private recentFrames: FrameState[] = [];
   private lastReleaseTime = 0;
   private cooldownMs = 500;
 
@@ -41,9 +34,6 @@ export class TwoGateReleaseDetector {
    * Gate 2: upward motion followed by a distinct downward flick
    */
   update(handY: number, velocityY: number, timestamp: number): boolean {
-    this.recentFrames.push({ handY, velocityY, timestamp });
-    if (this.recentFrames.length > 10) this.recentFrames.shift();
-
     if (timestamp - this.lastReleaseTime < this.cooldownMs) return false;
 
     const aboveShoulder = handY < this.calibration.shoulderY;
@@ -77,6 +67,5 @@ export class TwoGateReleaseDetector {
   reset(): void {
     this.upwardFrameCount = 0;
     this.wasRising = false;
-    this.recentFrames = [];
   }
 }

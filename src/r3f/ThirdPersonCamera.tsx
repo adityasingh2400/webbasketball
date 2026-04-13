@@ -1,18 +1,19 @@
 import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { GameRuntime } from '../engine/GameRuntime';
 
 interface ThirdPersonCameraProps {
-  target: [number, number, number];
+  runtime: GameRuntime;
   offset?: [number, number, number];
   lookAtOffset?: [number, number, number];
   smoothness?: number;
 }
 
 export function ThirdPersonCamera({
-  target,
-  offset = [0, 4, 8],
-  lookAtOffset = [0, 1.2, -2],
+  runtime,
+  offset = [0, 1.8, 3.5],
+  lookAtOffset = [0, 1.3, -4],
   smoothness = 5,
 }: ThirdPersonCameraProps) {
   const { camera } = useThree();
@@ -23,6 +24,9 @@ export function ThirdPersonCamera({
   const initialized = useRef(false);
 
   useFrame((_, delta) => {
+    const snapshot = runtime.getRenderState();
+    const target = snapshot.playerPosition;
+
     targetPos.current.set(
       target[0] + offset[0],
       target[1] + offset[1],

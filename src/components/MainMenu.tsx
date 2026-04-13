@@ -1,74 +1,68 @@
-import { useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import './MainMenu.css';
 
-type GameMode = 'freeplay' | 'timed' | 'streak';
-
 interface MainMenuProps {
-  onStartGame: (mode: GameMode) => void;
+  onStartGame: () => void;
   highScore: number;
-  bestStreak: number;
 }
 
-export function MainMenu({ onStartGame, highScore, bestStreak }: MainMenuProps) {
-  const [selectedMode, setSelectedMode] = useState<GameMode>('freeplay');
+export function MainMenu({ onStartGame, highScore }: MainMenuProps) {
+  const [introVisible, setIntroVisible] = useState(false);
 
-  const modes: { id: GameMode; name: string; description: string; icon: string }[] = [
-    {
-      id: 'freeplay',
-      name: 'Free Play',
-      description: 'Practice your shots with no pressure',
-      icon: '🏀',
-    },
-    {
-      id: 'timed',
-      name: '60 Second Challenge',
-      description: 'Score as many as you can in 60 seconds',
-      icon: '⏱️',
-    },
-    {
-      id: 'streak',
-      name: 'Streak Mode',
-      description: 'How many can you make in a row?',
-      icon: '🔥',
-    },
-  ];
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setIntroVisible(true);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const getRevealProps = (delay: string) => {
+    const style: CSSProperties & { '--intro-delay': string } = {
+      '--intro-delay': delay,
+    };
+
+    // Keep elements hidden until our own reveal starts so they never flash in,
+    // disappear, and then re-enter after the stylesheet finishes loading.
+    if (!introVisible) {
+      style.opacity = 0;
+      style.transform = 'translateY(28px)';
+    }
+
+    return {
+      className: `menu-reveal${introVisible ? ' menu-reveal--visible' : ''}`,
+      style,
+    };
+  };
+
+  const titleReveal = getRevealProps('0.1s');
+  const subtitleReveal = getRevealProps('0.2s');
+  const statsReveal = getRevealProps('0.35s');
+  const playReveal = getRevealProps('0.5s');
+  const footerReveal = getRevealProps('0.65s');
 
   return (
     <div className="main-menu">
       <div className="menu-content">
-        <h1 className="menu-title">WebBall</h1>
-        <p className="menu-subtitle">Webcam Basketball</p>
+        <h1 className={`menu-title ${titleReveal.className}`} style={titleReveal.style}>WebBall</h1>
+        <p className={`menu-subtitle ${subtitleReveal.className}`} style={subtitleReveal.style}>Webcam Basketball</p>
 
-        <div className="stats-row">
+        <div className={`stats-row ${statsReveal.className}`} style={statsReveal.style}>
           <div className="menu-stat">
             <span className="menu-stat-value">{highScore}</span>
             <span className="menu-stat-label">High Score</span>
           </div>
-          <div className="menu-stat">
-            <span className="menu-stat-value">{bestStreak}</span>
-            <span className="menu-stat-label">Best Streak</span>
-          </div>
         </div>
 
-        <div className="mode-selector">
-          {modes.map((mode) => (
-            <button
-              key={mode.id}
-              className={`mode-option ${selectedMode === mode.id ? 'selected' : ''}`}
-              onClick={() => setSelectedMode(mode.id)}
-            >
-              <span className="mode-icon">{mode.icon}</span>
-              <span className="mode-name">{mode.name}</span>
-              <span className="mode-description">{mode.description}</span>
-            </button>
-          ))}
-        </div>
-
-        <button className="play-button" onClick={() => onStartGame(selectedMode)}>
+        <button
+          className={`play-button ${playReveal.className}`}
+          style={playReveal.style}
+          onClick={onStartGame}
+        >
           Play Now
         </button>
 
-        <div className="menu-footer">
+        <div className={`menu-footer ${footerReveal.className}`} style={footerReveal.style}>
           <p>✋ Move your hand to control the ball</p>
           <p>👆 Raise and flick to shoot</p>
           <p className="keyboard-hint">

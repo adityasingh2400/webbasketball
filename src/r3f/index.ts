@@ -5,3 +5,6 @@ export { Hoop } from './Hoop';
 export { Player } from './Player';
 export { Lighting } from './Lighting';
 export { ThirdPersonCamera } from './ThirdPersonCamera';
+export { FrontViewPip } from './FrontViewPip';
+export { FpsCapDriver, R3F_MAX_FPS } from './FpsCapDriver';
+export { Environment } from './Environment';

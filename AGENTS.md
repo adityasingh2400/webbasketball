@@ -12,7 +12,7 @@ Webcam-controlled basketball game. React UI + BallStateMachine + ShotArc physics
 webball/
 ├── src/
 │   ├── engine/               # Game engine subsystems
-│   │   ├── BallStateMachine.ts   # 19-state ball handling FSM
+│   │   ├── BallStateMachine.ts   # 18-state ball handling FSM
 │   │   ├── ShotArc.ts            # 3D projectile physics with collision
 │   │   └── input/
 │   │       ├── HandTracker.ts        # MediaPipe hand landmarker
@@ -45,7 +45,7 @@ webball/
 | Task | Location | Notes |
 |------|----------|-------|
 | Add game feature | `src/components/GameScreen3D.tsx` | Game loop orchestrator |
-| Modify ball handling | `src/engine/BallStateMachine.ts` | 19 states, priority transitions |
+| Modify ball handling | `src/engine/BallStateMachine.ts` | 18 states, priority transitions |
 | Change shot physics | `src/engine/ShotArc.ts` | Trajectory + rim/backboard collision |
 | Change rendering | `src/r3f/` | R3F components |
 | Add hand gesture | `src/engine/input/TwoGateReleaseDetector.ts` | Position + velocity gates |
@@ -63,7 +63,7 @@ App.tsx → GameScreen3D.tsx (drives game loop via requestAnimationFrame)
  │   ├── HandTracker (MediaPipe)
  │   ├── OneEuroFilter (jitter reduction)
  │   └── TwoGateReleaseDetector (raise + flick detection)
- ├── BallStateMachine ref (19 states, priority-based transitions)
+ ├── BallStateMachine ref (18 states, priority-based transitions)
  ├── ShotArc ref (3D projectile, rim/backboard/floor collision)
  ├── useWebcam hook
  └── GameCanvas (R3F <Canvas>)
@@ -77,7 +77,7 @@ App.tsx → GameScreen3D.tsx (drives game loop via requestAnimationFrame)
 
 **Coordinate System**: 3D world space. Court is 15x14 units. Hoop at (0, 3.05, -13).
 
-**Ball State Flow**: IDLE → HELD → DRIBBLE_DOWN/UP → (CROSSOVER|BEHIND_BACK|BETWEEN_LEGS|HESITATION) → GATHER_LOW → GATHER_HIGH → SHOOTING → FOLLOW_THROUGH → (BOUNCE|DEAD) → IDLE
+**Ball State Flow**: IDLE → HELD → DRIBBLE_DOWN/UP → (CROSSOVER|BEHIND_BACK|BETWEEN_LEGS) → GATHER_LOW → GATHER_HIGH → SHOOTING → FOLLOW_THROUGH → (BOUNCE|DEAD) → IDLE
 
 ## CONVENTIONS
 
