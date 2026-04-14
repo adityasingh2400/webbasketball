@@ -231,6 +231,20 @@
   outline-offset: 4px;
 }
 
+.play-button--secondary {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  font-size: 1.1rem;
+  padding: var(--space-sm) var(--space-xl);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  animation: none;
+}
+
+.play-button--secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.08);
+}
+
 .menu-footer {
   display: flex;
   flex-direction: column;

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameCanvas } from '../r3f';
 import { useWebcam } from '../hooks/useWebcam';
 import { useHandTracking3D } from '../hooks/useHandTracking3D';
+import { useBodyTracking3D } from '../hooks/useBodyTracking3D';
 import { GameRuntime } from '../engine/GameRuntime';
 import type { RuntimeControls } from '../engine/GameRuntime';
-import type { HandLandmark } from '../types';
 import type { RenderDiagnostics } from '../r3f/GameCanvas';
 import type { QualityLevel } from '../r3f/Lighting';
+import type { HandLandmark } from '../types';
+import { ShotMeter } from './ShotMeter';
+import { keyboardToBodyInputFrame } from '../engine/input/BodyInputFrame';
 import './GameScreen3D.css';
 
 interface GameScreen3DProps {
@@ -31,9 +34,6 @@ interface DebugPanelState {
   ballState: string;
   animationState: string;
 }
-
-const SWEET_SPOT_SIZE = 0.15;
-const SWEET_SPOT_TOP = 1.0;
 
 function formatBallStateLabel(state: string): string {
   return state
@@ -79,30 +79,14 @@ function drawHandSkeleton(
   }
 }
 
-function ShotMeter({ value, isVisible }: { value: number; isVisible: boolean }) {
-  if (!isVisible) return null;
-
-  const sweetSpotStart = SWEET_SPOT_TOP - SWEET_SPOT_SIZE;
-  const inSweetSpot = value >= sweetSpotStart && value <= SWEET_SPOT_TOP;
-
-  return (
-    <div className="shot-meter">
-      <div className="shot-meter__gradient" />
-      <div className="shot-meter__sweetspot" style={{ height: `${SWEET_SPOT_SIZE * 100}%` }} />
-      <div
-        className={`shot-meter__indicator ${inSweetSpot ? 'shot-meter__indicator--sweet' : 'shot-meter__indicator--normal'}`}
-        style={{ bottom: `${value * 100}%` }}
-      />
-    </div>
-  );
-}
-
 export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
   const runtime = useMemo(() => new GameRuntime(), []);
   const [ui, setUi] = useState(() => runtime.getUiState());
   const [webcamActive, setWebcamActive] = useState(false);
   const [quality, setQuality] = useState<QualityLevel>('medium');
   const [showDebug, setShowDebug] = useState(() => import.meta.env.DEV);
+  const [sceneReady, setSceneReady] = useState(false);
+  const firstFrameReceived = useRef(false);
   const [debug, setDebug] = useState<DebugPanelState>(() => ({
     renderFps: 0,
     renderFrameMs: 0,
@@ -144,12 +128,21 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
     getDiagnostics,
   } = useHandTracking3D();
 
+  const {
+    initialize: initBodyTracking,
+    start: startBodyTracking,
+    stop: stopBodyTracking,
+    getBodyData,
+    getDiagnostics: getBodyDiagnostics,
+  } = useBodyTracking3D();
+
   useEffect(() => {
     return runtime.subscribeUi(setUi);
   }, [runtime]);
 
   const stopWebcamMode = useCallback(() => {
     stopTracking();
+    stopBodyTracking();
     stopWebcam();
     setWebcamActive(false);
 
@@ -163,7 +156,7 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
     if (ctx && canvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-  }, [stopTracking, stopWebcam]);
+  }, [stopTracking, stopBodyTracking, stopWebcam]);
 
   const startWebcamMode = useCallback(async () => {
     const video = document.createElement('video');
@@ -180,6 +173,10 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
     await startWebcam(video);
     await initTracking(video);
     startTracking();
+
+    await initBodyTracking(video);
+    startBodyTracking();
+
     setWebcamActive(true);
 
     requestAnimationFrame(() => {
@@ -188,7 +185,7 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
         pipVideoRef.current.play().catch(() => {});
       }
     });
-  }, [startWebcam, initTracking, startTracking]);
+  }, [startWebcam, initTracking, startTracking, initBodyTracking, startBodyTracking]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -301,6 +298,10 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
 
   const handleRenderSample = useCallback((sample: RenderDiagnostics) => {
     renderDiagnosticsRef.current = sample;
+    if (!firstFrameReceived.current && sample.fps > 0) {
+      firstFrameReceived.current = true;
+      setTimeout(() => setSceneReady(true), 600);
+    }
   }, []);
 
   const getControls = useCallback((): RuntimeControls => {
@@ -319,6 +320,21 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
 
     const hand = getHandData();
 
+    let bodyInputFrame = null;
+    if (webcamActive) {
+      const bodyData = getBodyData();
+      bodyInputFrame = bodyData.bodyInputFrame ?? null;
+    } else {
+      bodyInputFrame = keyboardToBodyInputFrame({
+        moveX,
+        moveZ,
+        dribblePressed: keysPressed.current.has('e'),
+        shootHeld: shootHeld.current,
+        shootReleased: releasedNow,
+        currentBallSide: runtime.getRenderState().ballSide,
+      }, performance.now());
+    }
+
     return {
       webcamActive,
       hand: {
@@ -329,13 +345,14 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
         handedness: hand.handedness,
         released: hand.released,
       },
+      bodyInputFrame,
       moveX,
       moveZ,
       dribblePressed: keysPressed.current.has('e'),
       shootHeld: shootHeld.current,
       shootReleased: releasedNow,
     };
-  }, [getHandData, webcamActive]);
+  }, [getHandData, getBodyData, webcamActive, runtime]);
 
   const handleExit = useCallback(() => {
     onGameEnd?.(ui.score);
@@ -362,6 +379,16 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
         onRenderSample={handleRenderSample}
       />
 
+      {/* Loading overlay — covers the canvas until the scene has rendered */}
+      <div className={`game-loading ${sceneReady ? 'game-loading--done' : ''}`}>
+        <div className="game-loading__content">
+          <div className="game-loading__ball" />
+          <div className="game-loading__text">Loading</div>
+        </div>
+      </div>
+
+      <div className={`game-hud ${sceneReady ? 'game-hud--visible' : ''}`}>
+
       <div className="hud-score">
         <span>{ui.score}</span>
         {ui.streak >= 3 ? <span className="hud-score__streak">🔥 {ui.streak}</span> : null}
@@ -381,7 +408,7 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
         </div>
       ) : null}
 
-      <ShotMeter value={ui.shotMeterValue} isVisible={ui.shotMeterVisible} />
+      <ShotMeter runtime={runtime} />
 
       {webcamActive ? (
         <div className="webcam-pip">
@@ -454,7 +481,7 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
             <b>
               {debug.moveLocked ? 'move-locked' : 'free'}
               {' / '}
-              {webcamActive ? (debug.trackingHasHand ? 'hand-live' : 'no-hand') : 'keyboard'}
+              {webcamActive ? (debug.trackingHasHand ? 'body-live' : 'no-body') : 'keyboard'}
             </b>
           </div>
           <div className="debug-panel__row">
@@ -473,6 +500,8 @@ export default function GameScreen3D({ onBack, onGameEnd }: GameScreen3DProps) {
           ← Back
         </button>
       ) : null}
+
+      </div>
     </div>
   );
 }

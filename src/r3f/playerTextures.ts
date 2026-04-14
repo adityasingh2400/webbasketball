@@ -14,54 +14,69 @@ export function createJerseyFabricTexture(): THREE.CanvasTexture {
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
 
-  const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#1e40af');
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#2563eb');
+  g.addColorStop(0.15, '#3b82f6');
   g.addColorStop(0.5, '#2563eb');
-  g.addColorStop(1, '#1d4ed8');
+  g.addColorStop(0.85, '#1d4ed8');
+  g.addColorStop(1, '#1e40af');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
   ctx.lineWidth = 1;
-  for (let y = 0; y < h; y += 4) {
-    const o = (y % 8) * 0.4;
+  for (let y = 0; y < h; y += 6) {
+    const o = (y % 12) * 0.2;
     ctx.beginPath();
     ctx.moveTo(0, y + o);
-    for (let x = 0; x < w; x += 16) {
-      ctx.lineTo(x + 8, y + o + Math.sin(x * 0.02) * 0.6);
+    for (let x = 0; x < w; x += 20) {
+      ctx.lineTo(x + 10, y + o + Math.sin(x * 0.02) * 0.4);
     }
     ctx.stroke();
   }
 
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.035)';
-  for (let x = 0; x < w; x += 5) {
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.02)';
+  for (let x = 0; x < w; x += 8) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    ctx.lineTo(x + 1.5, h);
+    ctx.lineTo(x + 1.2, h);
     ctx.stroke();
   }
 
-  ctx.fillStyle = 'rgba(15, 35, 90, 0.5)';
-  ctx.fillRect(0, 0, w * 0.11, h);
-  ctx.fillRect(w * 0.89, 0, w * 0.11, h);
+  const sideG = ctx.createLinearGradient(0, 0, w * 0.12, 0);
+  sideG.addColorStop(0, 'rgba(10, 25, 70, 0.55)');
+  sideG.addColorStop(1, 'rgba(10, 25, 70, 0)');
+  ctx.fillStyle = sideG;
+  ctx.fillRect(0, 0, w * 0.14, h);
+  const sideG2 = ctx.createLinearGradient(w * 0.88, 0, w, 0);
+  sideG2.addColorStop(0, 'rgba(10, 25, 70, 0)');
+  sideG2.addColorStop(1, 'rgba(10, 25, 70, 0.55)');
+  ctx.fillStyle = sideG2;
+  ctx.fillRect(w * 0.86, 0, w * 0.14, h);
 
-  ctx.fillStyle = 'rgba(248, 250, 252, 0.22)';
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.18)';
   ctx.beginPath();
-  ctx.ellipse(w * 0.5, h * 0.1, w * 0.38, h * 0.1, 0, 0, Math.PI * 2);
+  ctx.ellipse(w * 0.5, h * 0.08, w * 0.4, h * 0.08, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(w * 0.28, h * 0.52, w * 0.44, h * 0.14);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(w * 0.3, h * 0.52, w * 0.4, h * 0.12);
 
-  ctx.fillStyle = 'rgba(248, 250, 252, 0.95)';
-  ctx.font = 'bold 200px system-ui, "Segoe UI", sans-serif';
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.96)';
+  ctx.font = 'bold 190px system-ui, "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('7', w * 0.5, h * 0.45);
-  ctx.strokeStyle = 'rgba(30, 58, 138, 0.55)';
-  ctx.lineWidth = 12;
-  ctx.strokeText('7', w * 0.5, h * 0.45);
+  ctx.fillText('7', w * 0.5, h * 0.44);
+  ctx.strokeStyle = 'rgba(30, 58, 138, 0.5)';
+  ctx.lineWidth = 10;
+  ctx.strokeText('7', w * 0.5, h * 0.44);
+
+  const highlightG = ctx.createRadialGradient(w * 0.4, h * 0.28, 0, w * 0.5, h * 0.5, w * 0.5);
+  highlightG.addColorStop(0, 'rgba(255, 255, 255, 0.06)');
+  highlightG.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = highlightG;
+  ctx.fillRect(0, 0, w, h);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -110,7 +125,55 @@ export function createShortsFabricTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Subtle skin variation (warm undertone + micro speckle) */
+/** Pants: dark knit with light center seam, inspired by simple toy-sports silhouettes */
+export function createPantsFabricTexture(): THREE.CanvasTexture {
+  const w = 256;
+  const h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#1f2937');
+  g.addColorStop(0.3, '#111827');
+  g.addColorStop(0.7, '#0f172a');
+  g.addColorStop(1, '#1a202c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < h; y += 5) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y + 1);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.5, 0);
+  ctx.lineTo(w * 0.5, h);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.025)';
+  ctx.fillRect(0, 0, w * 0.12, h);
+  ctx.fillRect(w * 0.88, 0, w * 0.12, h);
+
+  const sheen = ctx.createRadialGradient(w * 0.35, h * 0.35, 0, w * 0.5, h * 0.5, w * 0.55);
+  sheen.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
+  sheen.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, 0, w, h);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Subtle skin variation (warm undertone + micro speckle + SSS-like warmth) */
 export function createSkinTexture(): THREE.CanvasTexture {
   const w = 128;
   const h = 128;
@@ -122,18 +185,31 @@ export function createSkinTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#f0c39c';
   ctx.fillRect(0, 0, w, h);
 
-  for (let i = 0; i < 900; i++) {
+  for (let i = 0; i < 300; i++) {
     const x = Math.floor(hash2(i, 1) * w);
     const y = Math.floor(hash2(i, 2) * h);
     const t = hash2(i, 3);
-    ctx.fillStyle = t < 0.5 ? 'rgba(200, 120, 80, 0.06)' : 'rgba(255, 220, 190, 0.07)';
-    ctx.fillRect(x, y, 1 + Math.floor(hash2(i, 4) * 2), 1);
+    const colors = [
+      'rgba(210, 130, 90, 0.04)',
+      'rgba(255, 220, 190, 0.05)',
+      'rgba(240, 180, 140, 0.03)',
+    ];
+    ctx.fillStyle = colors[Math.floor(t * 3)];
+    ctx.fillRect(x, y, 2 + Math.floor(hash2(i, 4) * 2), 2);
   }
 
-  const g = ctx.createRadialGradient(w * 0.35, h * 0.3, 0, w * 0.5, h * 0.5, w * 0.65);
-  g.addColorStop(0, 'rgba(255, 210, 180, 0.12)');
-  g.addColorStop(1, 'rgba(120, 70, 40, 0.08)');
+  const g = ctx.createRadialGradient(w * 0.38, h * 0.32, 0, w * 0.5, h * 0.5, w * 0.6);
+  g.addColorStop(0, 'rgba(255, 215, 185, 0.14)');
+  g.addColorStop(0.5, 'rgba(245, 195, 160, 0.06)');
+  g.addColorStop(1, 'rgba(140, 85, 50, 0.06)');
   ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  const warmG = ctx.createLinearGradient(0, 0, 0, h);
+  warmG.addColorStop(0, 'rgba(255, 200, 170, 0.08)');
+  warmG.addColorStop(0.5, 'rgba(255, 215, 190, 0.04)');
+  warmG.addColorStop(1, 'rgba(200, 130, 90, 0.06)');
+  ctx.fillStyle = warmG;
   ctx.fillRect(0, 0, w, h);
 
   const tex = new THREE.CanvasTexture(canvas);
@@ -150,13 +226,14 @@ export function createShoeLeatherTexture(): THREE.CanvasTexture {
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = '#ea580c';
+  ctx.fillStyle = '#1d4ed8';
   ctx.fillRect(0, 0, w, h);
 
   const g = ctx.createLinearGradient(0, 0, w, h);
-  g.addColorStop(0, '#fb923c');
-  g.addColorStop(0.5, '#f97316');
-  g.addColorStop(1, '#c2410c');
+  g.addColorStop(0, '#93c5fd');
+  g.addColorStop(0.25, '#60a5fa');
+  g.addColorStop(0.55, '#2563eb');
+  g.addColorStop(1, '#1e3a8a');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
@@ -167,7 +244,9 @@ export function createShoeLeatherTexture(): THREE.CanvasTexture {
     ctx.fillRect(x, y, 2, 1);
   }
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillRect(0, h * 0.62, w, h * 0.16);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
   ctx.lineWidth = 1;
   ctx.strokeRect(4, 4, w - 8, h - 8);
 

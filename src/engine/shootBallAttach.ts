@@ -1,4 +1,9 @@
 import type { BallHandlingState } from './BallStateMachine';
+import {
+  SHOT_GATHER_END_PROGRESS,
+  SHOT_RELEASE_END_PROGRESS,
+  sampleShotPhase,
+} from '../data/shotPhases';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -13,28 +18,10 @@ function smoothstep(t: number): number {
   return x * x * (3 - 2 * x);
 }
 
-function easeOutQuad(t: number): number {
-  return 1 - (1 - t) * (1 - t);
-}
-
-function easeInOutQuad(t: number): number {
-  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-}
-
-/**
- * Ball height / position vs shot meter (matches gather phases in playerAnimation.applyGatherOverlay).
- */
 export function ballLocalFromShotCharge(charge: number): [number, number, number] {
-  const c = clamp(charge, 0, 1);
-  const crouch = Math.min(1, c / 0.34);
-  const rise = clamp((c - 0.34) / 0.66, 0, 1);
-  const yLow = 0.56;
-  const yMid = 0.9;
-  const yHigh = 1.5;
-  const y = yLow + (yMid - yLow) * easeOutQuad(crouch) + (yHigh - yMid) * easeInOutQuad(rise);
-  const x = 0.16 - c * 0.1;
-  const z = 0.1 - c * 0.085;
-  return [x, y, z];
+  const gatherProgress = clamp(charge, 0, 1) * SHOT_GATHER_END_PROGRESS;
+  const phase = sampleShotPhase(gatherProgress);
+  return [phase.ball.x, phase.ball.y, phase.ball.z];
 }
 
 /**
@@ -62,13 +49,13 @@ export function computeAttachedShootBallLocal(
 
   if (state === 'SHOOTING') {
     const p = smoothstep(clamp(stateProgress, 0, 1));
-    const set = ballLocalFromShotCharge(shotCharge);
-    const release: [number, number, number] = [0.025, 1.76, -0.14];
-    const lift = Math.sin(p * Math.PI) * 0.045;
+    const progress = lerp(SHOT_GATHER_END_PROGRESS, SHOT_RELEASE_END_PROGRESS, p);
+    const phase = sampleShotPhase(progress);
+    const lift = Math.sin(p * Math.PI) * 0.02;
     return [
-      lerp(set[0], release[0], p),
-      lerp(set[1], release[1], p) + lift * (1 - p),
-      lerp(set[2], release[2], p),
+      phase.ball.x,
+      phase.ball.y + lift * (1 - p),
+      phase.ball.z,
     ];
   }
 
