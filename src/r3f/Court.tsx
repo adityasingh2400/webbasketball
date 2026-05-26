@@ -1,6 +1,8 @@
 import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
+import type { QualityLevel } from './Lighting';
+import { COURT_TOON, ENV_TOON } from './toonMaterial';
 
 const COURT_WIDTH = 15;
 const COURT_HALF_LENGTH = 14;
@@ -9,18 +11,22 @@ const PAINT_Y = 0.008;
 const HOOP_Z = -13;
 
 const LINE_COLOR = '#ffffff';
-const PAINT_COLOR = '#a04020';
 
-function createHardwoodTexture(): THREE.CanvasTexture {
-  const w = 1024;
-  const h = 1024;
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
+interface CourtTextures {
+  colorMap: THREE.CanvasTexture;
+}
 
-  ctx.fillStyle = '#c08050';
-  ctx.fillRect(0, 0, w, h);
+function createCourtTextures(resolution: number): CourtTextures {
+  const w = resolution;
+  const h = resolution;
+
+  const colorCanvas = document.createElement('canvas');
+  colorCanvas.width = w;
+  colorCanvas.height = h;
+  const colorCtx = colorCanvas.getContext('2d')!;
+
+  colorCtx.fillStyle = '#c08050';
+  colorCtx.fillRect(0, 0, w, h);
 
   const plankCount = 10;
   const plankW = w / plankCount;
@@ -29,48 +35,159 @@ function createHardwoodTexture(): THREE.CanvasTexture {
 
   for (let i = 0; i < plankCount; i++) {
     const x = i * plankW;
-    ctx.fillStyle = tones[i % tones.length];
-    ctx.fillRect(x, 0, plankW, h);
 
-    ctx.strokeStyle = 'rgba(60, 30, 10, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
+    colorCtx.fillStyle = tones[i % tones.length];
+    colorCtx.fillRect(x, 0, plankW, h);
 
-    for (let g = 0; g < 20; g++) {
-      ctx.strokeStyle = `rgba(80, 40, 10, ${0.03 + Math.random() * 0.04})`;
-      ctx.lineWidth = 0.5 + Math.random();
+    colorCtx.strokeStyle = 'rgba(60, 30, 10, 0.25)';
+    colorCtx.lineWidth = 1.5;
+    colorCtx.beginPath();
+    colorCtx.moveTo(x, 0);
+    colorCtx.lineTo(x, h);
+    colorCtx.stroke();
+
+    for (let g = 0; g < 30; g++) {
       const gx = x + Math.random() * plankW;
       const gy = Math.random() * h;
-      ctx.beginPath();
-      ctx.moveTo(gx, gy);
-      ctx.lineTo(gx + (Math.random() - 0.5) * 4, gy + 30 + Math.random() * 80);
-      ctx.stroke();
+      const len = 30 + Math.random() * 100;
+      const drift = (Math.random() - 0.5) * 5;
+
+      colorCtx.strokeStyle = `rgba(80, 40, 10, ${0.03 + Math.random() * 0.05})`;
+      colorCtx.lineWidth = 0.5 + Math.random() * 1.2;
+      colorCtx.beginPath();
+      colorCtx.moveTo(gx, gy);
+      colorCtx.lineTo(gx + drift, gy + len);
+      colorCtx.stroke();
     }
+
+    for (let k = 0; k < 4; k++) {
+      const knotX = x + Math.random() * plankW;
+      const knotY = Math.random() * h;
+      const knotR = 3 + Math.random() * 6;
+
+      const grad = colorCtx.createRadialGradient(knotX, knotY, 0, knotX, knotY, knotR);
+      grad.addColorStop(0, 'rgba(90, 45, 15, 0.35)');
+      grad.addColorStop(0.6, 'rgba(100, 55, 20, 0.15)');
+      grad.addColorStop(1, 'rgba(100, 55, 20, 0)');
+      colorCtx.fillStyle = grad;
+      colorCtx.beginPath();
+      colorCtx.arc(knotX, knotY, knotR, 0, Math.PI * 2);
+      colorCtx.fill();
+    }
+  }
+
+  for (let s = 0; s < 15; s++) {
+    const sx = Math.random() * w;
+    const sy = Math.random() * h;
+    const sr = 30 + Math.random() * 60;
+    const sGrad = colorCtx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    sGrad.addColorStop(0, 'rgba(255, 240, 200, 0.06)');
+    sGrad.addColorStop(1, 'rgba(255, 240, 200, 0)');
+    colorCtx.fillStyle = sGrad;
+    colorCtx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+  }
+
+  function makeTexture(canvas: HTMLCanvasElement, srgb: boolean): THREE.CanvasTexture {
+    const tex = new THREE.CanvasTexture(canvas);
+    if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  return {
+    colorMap: makeTexture(colorCanvas, true),
+  };
+}
+
+function createSunGradientTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  const sunAngle = Math.atan2(6, 8);
+  const cx = size / 2;
+  const cy = size / 2;
+  const dx = Math.cos(sunAngle);
+  const dy = Math.sin(sunAngle);
+  const reach = size * 0.7;
+
+  const grad = ctx.createLinearGradient(
+    cx + dx * reach, cy + dy * reach,
+    cx - dx * reach, cy - dy * reach,
+  );
+  grad.addColorStop(0, 'rgba(255, 235, 190, 0.18)');
+  grad.addColorStop(0.35, 'rgba(255, 245, 220, 0.06)');
+  grad.addColorStop(0.55, 'rgba(200, 210, 225, 0.0)');
+  grad.addColorStop(0.75, 'rgba(160, 185, 220, 0.06)');
+  grad.addColorStop(1, 'rgba(130, 165, 210, 0.12)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 8; i++) {
+    const sx = Math.random() * size;
+    const sy = Math.random() * size;
+    const sr = 60 + Math.random() * 120;
+    const sunDot = ((sx / size) * dx + (sy / size) * dy);
+    const warmth = Math.max(0, sunDot);
+    const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    rg.addColorStop(0, `rgba(${255}, ${240 - warmth * 20}, ${190 + warmth * 30}, 0.04)`);
+    rg.addColorStop(1, 'rgba(200, 200, 200, 0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
   }
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 3);
   return tex;
 }
 
-function CourtFloor() {
-  const texture = useMemo(() => createHardwoodTexture(), []);
+function CourtFloor({ quality = 'medium' }: { quality?: QualityLevel }) {
+  const resolution = quality === 'high' ? 1536 : quality === 'medium' ? 1024 : 512;
+  const textures = useMemo(() => createCourtTextures(resolution), [resolution]);
+  const sunGradient = useMemo(() => createSunGradientTexture(), []);
+  const courtMat = useMemo(() => COURT_TOON(textures.colorMap), [textures.colorMap]);
 
   useEffect(() => {
-    return () => { texture.dispose(); };
-  }, [texture]);
+    return () => {
+      textures.colorMap.dispose();
+      sunGradient.dispose();
+      courtMat.dispose();
+    };
+  }, [textures, sunGradient, courtMat]);
+
+  const courtW = COURT_WIDTH + 2;
+  const courtH = COURT_HALF_LENGTH + 4;
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -COURT_HALF_LENGTH / 2]} receiveShadow>
-      <planeGeometry args={[COURT_WIDTH + 2, COURT_HALF_LENGTH + 4]} />
-      <meshStandardMaterial map={texture} roughness={0.7} metalness={0.02} />
-    </mesh>
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -COURT_HALF_LENGTH / 2]} receiveShadow>
+        <planeGeometry args={[courtW, courtH]} />
+        <primitive object={courtMat} attach="material" />
+      </mesh>
+      {/* Sun-relative color gradient overlay — warm on the sun-facing side,
+          cool blue-gray on the shadow side. This non-tiling overlay is what
+          makes the court look like it has natural light falling across it
+          instead of uniform flat color. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.001, -COURT_HALF_LENGTH / 2]}
+        renderOrder={1}
+      >
+        <planeGeometry args={[courtW, courtH]} />
+        <meshBasicMaterial
+          map={sunGradient}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -120,6 +237,12 @@ function Paint() {
   const paintStartZ = HOOP_Z + 1.22;
   const paintEndZ = paintStartZ + paintD;
 
+  const paintMat = useMemo(() => ENV_TOON('#a04020', { transparent: true, opacity: 0.25 }), []);
+
+  useEffect(() => {
+    return () => { paintMat.dispose(); };
+  }, [paintMat]);
+
   const outline = useMemo(() => [
     new THREE.Vector3(-hw, LINE_Y, paintStartZ),
     new THREE.Vector3(-hw, LINE_Y, paintEndZ),
@@ -131,7 +254,7 @@ function Paint() {
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, PAINT_Y, paintStartZ + paintD / 2]}>
         <planeGeometry args={[paintW, paintD]} />
-        <meshStandardMaterial color={PAINT_COLOR} roughness={0.8} transparent opacity={0.25} />
+        <primitive object={paintMat} attach="material" />
       </mesh>
       <Line points={outline} color={LINE_COLOR} lineWidth={2} />
     </group>
@@ -175,10 +298,14 @@ function ThreePointArc() {
   return <Line points={points} color={LINE_COLOR} lineWidth={2} />;
 }
 
-export function Court() {
+export interface CourtProps {
+  quality?: QualityLevel;
+}
+
+export const Court = ({ quality = 'medium' }: CourtProps) => {
   return (
     <group>
-      <CourtFloor />
+      <CourtFloor quality={quality} />
       <Boundary />
       <HalfCourtLine />
       <CenterCircle />
@@ -187,4 +314,4 @@ export function Court() {
       <ThreePointArc />
     </group>
   );
-}
+};

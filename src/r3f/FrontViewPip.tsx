@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { GameRuntime } from '../engine/GameRuntime';
@@ -18,7 +18,7 @@ interface FrontViewPipProps {
  * in front of the player (hoop side) so you can see face / form while playing.
  */
 export function FrontViewPip({ runtime, enabled = true }: FrontViewPipProps) {
-  const cam = useMemo(() => new THREE.PerspectiveCamera(40, 1, 0.1, 140), []);
+  const camRef = useRef(new THREE.PerspectiveCamera(40, 1, 0.1, 140));
   const lookAt = useRef(new THREE.Vector3());
 
   useFrame(({ gl, scene, size }) => {
@@ -36,6 +36,7 @@ export function FrontViewPip({ runtime, enabled = true }: FrontViewPipProps) {
 
     const snapshot = runtime.getRenderState();
     const [px, py, pz] = snapshot.playerPosition;
+    const cam = camRef.current;
 
     cam.aspect = pw / ph;
     cam.updateProjectionMatrix();

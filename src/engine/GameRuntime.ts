@@ -2,6 +2,15 @@ import { BallStateMachine } from './BallStateMachine';
 import type { BallHandlingState, BallInput } from './BallStateMachine';
 import { computeAttachedShootBallLocal } from './shootBallAttach';
 import { ShotArc } from './ShotArc';
+import {
+  getShotMeterProgress,
+  getShotReleaseQuality,
+  isGreenRelease,
+  SHOT_METER_SWEET_SPOT_START,
+  SHOT_METER_SWEET_SPOT_TOP,
+  type ShotReleaseQuality,
+} from './shotTiming';
+import type { BodyInputFrame } from './input/BodyInputFrame';
 
 export interface RuntimeHandSample {
   hasHand: boolean;
@@ -15,6 +24,7 @@ export interface RuntimeHandSample {
 export interface RuntimeControls {
   webcamActive: boolean;
   hand: RuntimeHandSample;
+  bodyInputFrame: BodyInputFrame | null;
   moveX: number;
   moveZ: number;
   dribblePressed: boolean;
@@ -47,6 +57,12 @@ export interface GameRenderState {
   canMove: boolean;
   netSwishVersion: number;
   latestSwishPerfect: boolean;
+  shotMeterValue: number;
+  shotMeterVisible: boolean;
+  shotReleaseValue: number;
+  shotReleaseQuality: ShotReleaseQuality | null;
+  shotReleaseVersion: number;
+  bodyInputFrame: BodyInputFrame | null;
 }
 
 export interface GameUiState {
@@ -85,12 +101,6 @@ const COURT_HALF_W = 7.12;
 const COURT_Z_MIN = -13.8;
 const COURT_Z_MAX = -0.5;
 const KEYBOARD_MOVE_SPEED = 5.4;
-
-const SHOT_METER_SPEED_MIN = 0.65;
-const SHOT_METER_SPEED_MAX = 1.5;
-const SHOT_METER_RAMP_TIME = 2.4;
-const SWEET_SPOT_SIZE = 0.15;
-const SWEET_SPOT_TOP = 1.0;
 
 const DEFAULT_HAND: RuntimeHandSample = {
   hasHand: false,
@@ -148,6 +158,9 @@ export class GameRuntime {
   private shotMeterValue = 0;
   private shotMeterVisible = false;
   private shotMeterStopped: number | null = null;
+  private shotReleaseValue = 0;
+  private shotReleaseQuality: ShotReleaseQuality | null = null;
+  private shotReleaseVersion = 0;
   private jumpProgress = 0;
   private gatherElapsed = 0;
 
@@ -171,6 +184,7 @@ export class GameRuntime {
   private currentReleaseAlpha = 0;
   private currentFollowThroughAlpha = 0;
   private currentBallSide = 1;
+  private currentBodyInput: BodyInputFrame | null = null;
 
   private readonly renderState: GameRenderState = {
     playerPosition: [0, 0, -4],
@@ -193,6 +207,12 @@ export class GameRuntime {
     canMove: true,
     netSwishVersion: 0,
     latestSwishPerfect: false,
+    shotMeterValue: 0,
+    shotMeterVisible: false,
+    shotReleaseValue: 0,
+    shotReleaseQuality: null,
+    shotReleaseVersion: 0,
+    bodyInputFrame: null,
   };
 
   private readonly debugState: GameDebugState = {
@@ -315,6 +335,7 @@ export class GameRuntime {
   }
 
   private tick(dt: number, controls: RuntimeControls): void {
+    this.currentBodyInput = controls.bodyInputFrame ?? null;
     this.updatePlayer(dt, controls);
     this.updateBallState(dt, controls);
     this.updateShotMeter(dt);
@@ -367,7 +388,9 @@ export class GameRuntime {
       const input: BallInput = {
         velocityX: controls.hand.velocity.x,
         velocityY: controls.hand.velocity.y,
-        handSide: controls.hand.handedness === 'Left' ? 'left' : 'right',
+        dribblePressed: this.ballSM.isDribbling() || controls.hand.velocity.y > 0.05,
+        // Ball state side labels follow the on-screen view, not the rig's anatomical hand.
+        handSide: controls.hand.handedness === 'Left' ? 'right' : 'left',
         released: controls.hand.released,
         timeSinceStateEnter: this.ballSM.getStateTime(),
       };
@@ -380,18 +403,20 @@ export class GameRuntime {
     const isInShoot = this.ballSM.isShooting();
 
     let intendedHand: 'left' | 'right' = this.currentBallSide >= 0 ? 'right' : 'left';
-    if (controls.moveX > 0.1) intendedHand = 'left';
-    else if (controls.moveX < -0.1) intendedHand = 'right';
+    if (controls.moveX > 0.1) intendedHand = 'right';
+    else if (controls.moveX < -0.1) intendedHand = 'left';
 
     const releasedKeyboard = this.keyboardReleaseLatched && isInGather;
 
     const input: BallInput = {
-      velocityX: -controls.moveX * 1.5, // Scaled to reliably trigger crossovers and tricks (> 1.0)
+      // Keyboard crossover direction follows the on-screen movement direction.
+      velocityX: controls.moveX * 1.5,
       velocityY: controls.shootHeld && !isInGather && !isInShoot
         ? -0.8
         : controls.dribblePressed
           ? 0.5
           : 0,
+      dribblePressed: controls.dribblePressed,
       handSide: intendedHand,
       released: releasedKeyboard,
       timeSinceStateEnter: this.ballSM.getStateTime(),
@@ -407,9 +432,7 @@ export class GameRuntime {
   private updateShotMeter(dt: number): void {
     if (this.ballSM.isGathering()) {
       this.gatherElapsed += dt;
-      const ramp = clamp(this.gatherElapsed / SHOT_METER_RAMP_TIME, 0, 1);
-      const speed = SHOT_METER_SPEED_MIN + (SHOT_METER_SPEED_MAX - SHOT_METER_SPEED_MIN) * ramp;
-      this.shotMeterValue = clamp(this.gatherElapsed * speed, 0, 1);
+      this.shotMeterValue = getShotMeterProgress(this.gatherElapsed);
       this.jumpProgress = this.shotMeterValue;
       return;
     }
@@ -465,7 +488,7 @@ export class GameRuntime {
 
   private updateAnimationState(dt: number): void {
     const state = this.ballSM.getState();
-    const isCrossover = this.ballSM.isCrossover() || this.ballSM.isTrick();
+    const isCrossover = this.ballSM.isCrossover();
     const isGathering = state === 'GATHER_LOW' || state === 'GATHER_HIGH';
     const isShooting = state === 'SHOOTING';
     const isFollow = state === 'FOLLOW_THROUGH';
@@ -475,7 +498,7 @@ export class GameRuntime {
     const localX = this.renderState.ballLocalPosition[0];
     if (state === 'DRIBBLE_LEFT_DOWN' || state === 'DRIBBLE_LEFT_UP' || state === 'HELD_LEFT') targetSide = -1;
     else if (state === 'DRIBBLE_RIGHT_DOWN' || state === 'DRIBBLE_RIGHT_UP' || state === 'HELD_RIGHT') targetSide = 1;
-    else targetSide = localX < 0 ? -1 : 1;
+    else targetSide = localX < 0 ? 1 : -1;
 
     const alphaRate = 12;
     const dampen = (cur: number, tar: number) => lerp(cur, tar, 1 - Math.exp(-alphaRate * dt));
@@ -492,11 +515,16 @@ export class GameRuntime {
       this.gatherElapsed = 0;
       this.shotMeterValue = 0;
       this.shotMeterStopped = null;
+      this.shotReleaseValue = 0;
+      this.shotReleaseQuality = null;
       this.shotMeterVisible = true;
     }
 
     if (to === 'SHOOTING' && (from === 'GATHER_LOW' || from === 'GATHER_HIGH')) {
       this.shotMeterStopped = this.shotMeterValue;
+      this.shotReleaseValue = this.shotMeterValue;
+      this.shotReleaseQuality = getShotReleaseQuality(this.shotMeterValue);
+      this.shotReleaseVersion += 1;
       this.shotMeterVisible = false;
     }
 
@@ -517,14 +545,16 @@ export class GameRuntime {
 
   private launchShot(): void {
     const stoppedValue = this.shotMeterStopped ?? 0.5;
-    const sweetSpotStart = SWEET_SPOT_TOP - SWEET_SPOT_SIZE;
-    const isGreen = stoppedValue >= sweetSpotStart && stoppedValue <= SWEET_SPOT_TOP;
+    const releaseQuality = getShotReleaseQuality(stoppedValue);
+    const isGreen = isGreenRelease(stoppedValue);
 
     let accuracyBonus = 0;
     if (isGreen) {
       accuracyBonus = 1.0;
     } else {
-      accuracyBonus = -(sweetSpotStart - stoppedValue) * 0.7;
+      accuracyBonus = releaseQuality === 'early'
+        ? -(SHOT_METER_SWEET_SPOT_START - stoppedValue) * 0.7
+        : -(stoppedValue - SHOT_METER_SWEET_SPOT_TOP) * 0.95;
     }
 
     const launchPower = this.latestControls.webcamActive
@@ -553,7 +583,7 @@ export class GameRuntime {
     if (inFlight) {
       const arcPos = this.shotArc.getPosition();
       ballPosition = [arcPos[0], arcPos[1], arcPos[2]];
-      // Convert world to local. Player faces -Z (Math.PI rotated). World +X is Local -X. 
+      // Convert world to local. Player faces -Z (Math.PI rotated). World +X is local -X.
       ballLocalPosition = [this.playerX - arcPos[0], arcPos[1], this.playerZ - arcPos[2]];
       ballSpinRate = -10;
     } else {
@@ -586,14 +616,14 @@ export class GameRuntime {
         }
 
         if (this.ballSM.isCrossover()) {
-          const fromX = snapshot.state === 'CROSSOVER_R2L' ? 0.3 : -0.3;
-          const toX = snapshot.state === 'CROSSOVER_R2L' ? -0.3 : 0.3;
+          const fromX = snapshot.state === 'CROSSOVER_R2L' ? -0.3 : 0.3;
+          const toX = snapshot.state === 'CROSSOVER_R2L' ? 0.3 : -0.3;
           bx = lerp(fromX, toX, snapshot.stateProgress);
         }
       }
 
       ballLocalPosition = [bx, by, bz];
-      // Due to player rotation Math.PI, local +X is world -X
+      // Due to the Math.PI body rotation, screen-right states use local -X positions.
       ballPosition = [this.playerX - bx, by, this.playerZ - bz];
     }
 
@@ -623,6 +653,12 @@ export class GameRuntime {
     this.renderState.canMove = canMove;
     this.renderState.netSwishVersion = this.netSwishVersion;
     this.renderState.latestSwishPerfect = this.latestSwishPerfect;
+    this.renderState.shotMeterValue = this.shotMeterValue;
+    this.renderState.shotMeterVisible = this.shotMeterVisible;
+    this.renderState.shotReleaseValue = this.shotReleaseValue;
+    this.renderState.shotReleaseQuality = this.shotReleaseQuality;
+    this.renderState.shotReleaseVersion = this.shotReleaseVersion;
+    this.renderState.bodyInputFrame = this.currentBodyInput;
 
     this.debugState.ballState = snapshot.state;
     this.debugState.animationState = config.playerAnim;

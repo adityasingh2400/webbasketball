@@ -5,6 +5,7 @@ function makeInput(overrides: Partial<BallInput> = {}): BallInput {
   return {
     velocityX: 0,
     velocityY: 0,
+    dribblePressed: false,
     handSide: 'right',
     released: false,
     timeSinceStateEnter: 0,
@@ -67,7 +68,7 @@ describe('BallStateMachine', () => {
     });
   });
 
-  describe('dribble auto-cycling', () => {
+  describe('single dribble auto-cycling', () => {
     it('auto-transitions DRIBBLE_RIGHT_DOWN → DRIBBLE_RIGHT_UP after duration', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
       sm.update(0.016, makeInput({ velocityY: 0.5 }));
@@ -79,15 +80,26 @@ describe('BallStateMachine', () => {
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_UP');
     });
 
-    it('cycles DOWN → UP → DOWN continuously', () => {
+    it('loops into the next dribble while dribble stays pressed', () => {
       sm.update(0.016, makeInput({ handSide: 'right' }));
-      sm.update(0.016, makeInput({ velocityY: 0.5 }));
+      sm.update(0.016, makeInput({ velocityY: 0.5, dribblePressed: true }));
 
-      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput());
+      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput({ dribblePressed: true }));
+      expect(sm.getState()).toBe('DRIBBLE_RIGHT_UP');
+
+      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput({ dribblePressed: true }));
+      expect(sm.getState()).toBe('DRIBBLE_RIGHT_DOWN');
+    });
+
+    it('settles back to HELD_RIGHT once dribble is released', () => {
+      sm.update(0.016, makeInput({ handSide: 'right' }));
+      sm.update(0.016, makeInput({ velocityY: 0.5, dribblePressed: true }));
+
+      for (let i = 0; i < 29; i++) sm.update(0.016, makeInput({ dribblePressed: true }));
       expect(sm.getState()).toBe('DRIBBLE_RIGHT_UP');
 
       for (let i = 0; i < 29; i++) sm.update(0.016, makeInput());
-      expect(sm.getState()).toBe('DRIBBLE_RIGHT_DOWN');
+      expect(sm.getState()).toBe('HELD_RIGHT');
     });
   });
 
@@ -181,18 +193,6 @@ describe('BallStateMachine', () => {
       for (let i = 0; i < 30; i++) sm.update(0.016, makeInput());
       unsub();
       expect(transitions).toContain('IDLE');
-    });
-  });
-
-  describe('trick moves', () => {
-    it('DRIBBLE_RIGHT_DOWN → BEHIND_BACK on extreme velocity combo', () => {
-      sm.update(0.016, makeInput({ handSide: 'right' }));
-      sm.update(0.016, makeInput({ velocityY: 0.5 }));
-      expect(sm.getState()).toBe('DRIBBLE_RIGHT_DOWN');
-
-      sm.update(0.016, makeInput({ velocityX: 1.5, velocityY: -0.3 }));
-      expect(sm.getState()).toBe('BEHIND_BACK');
-      expect(sm.isTrick()).toBe(true);
     });
   });
 

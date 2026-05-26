@@ -47,3 +47,24 @@ export interface CalibrationData {
   shoulderY: number;
   waistY: number;
 }
+
+// ============================================
+// Body Pose Tracking Types (PoseLandmarker)
+// ============================================
+
+export interface PoseLandmarkData {
+  index: number;
+  x: number;
+  y: number;
+  z: number;
+  visibility: number;
+}
+
+export interface BodyTrackingFrame {
+  timestamp: number;
+  /** 33 normalized image-space landmarks, or null if no body detected */
+  landmarks: PoseLandmarkData[] | null;
+  /** 33 world-space landmarks in meters (hip-centered), or null */
+  worldLandmarks: PoseLandmarkData[] | null;
+  isTracking: boolean;
+}

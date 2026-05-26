@@ -137,6 +137,7 @@ export class ShotArc {
       this.checkRimCollision();
     }
     this.checkBasketMade();
+    this.checkMissedAndPastRim();
     this.checkFloorBounce(deltaTime);
 
     if (this.state.time > 6) {
@@ -208,6 +209,19 @@ export class ShotArc {
       this.state.velocity[1] < 0
     ) {
       this.state.madeBasket = true;
+      this.state.landed = true;
+      this.active = false;
+    }
+  }
+
+  private checkMissedAndPastRim(): void {
+    if (this.state.madeBasket) return;
+
+    const pastRim = this.state.position[1] < HOOP_POSITION.y - 0.5
+      && this.state.velocity[1] < 0
+      && this.state.time > 0.5;
+
+    if (pastRim) {
       this.state.landed = true;
       this.active = false;
     }

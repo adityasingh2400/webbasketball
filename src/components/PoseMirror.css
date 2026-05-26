@@ -1,0 +1,349 @@
+.pose-editor {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  background: #0e0e1a;
+  color: #e8e8f0;
+  font-family: var(--font-body, 'Inter', sans-serif);
+}
+
+/* 2×2 viewport grid */
+.pose-editor__views {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  background: #0a0a16;
+  min-width: 0;
+}
+
+.pose-view {
+  position: relative;
+  overflow: hidden;
+}
+
+.pose-view canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.pose-view__label {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 232, 240, 0.5);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 7px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* Sidebar */
+.pose-editor__sidebar {
+  width: 340px;
+  padding: 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #14142a;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-y: auto;
+}
+
+.pose-editor__sidebar h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 1px;
+}
+
+.pose-editor__sidebar h3 {
+  margin: 0 0 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(232, 232, 240, 0.4);
+}
+
+/* Transport */
+.pose-editor__transport {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pose-editor__total {
+  font-size: 11px;
+  color: rgba(232, 232, 240, 0.4);
+  font-family: var(--font-mono, monospace);
+  margin-left: auto;
+}
+
+/* Phase list */
+.pose-editor__phase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.pose-editor__phase {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #e8e8f0;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.pose-editor__phase:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pose-editor__phase--selected {
+  background: rgba(100, 140, 255, 0.12);
+  border-color: rgba(100, 140, 255, 0.35);
+}
+
+.pose-editor__phase--playing {
+  background: rgba(255, 200, 50, 0.15);
+  border-color: rgba(255, 200, 50, 0.4);
+}
+
+.pose-editor__phase-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pose-editor__phase-dur {
+  width: 48px;
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  color: #e8e8f0;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  text-align: right;
+}
+
+.pose-editor__phase-unit {
+  font-size: 10px;
+  color: rgba(232, 232, 240, 0.35);
+}
+
+.pose-editor__seed {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  background: rgba(100, 140, 255, 0.05);
+  border: 1px solid rgba(100, 140, 255, 0.12);
+  border-radius: 6px;
+}
+
+.pose-editor__seed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c6d7ff;
+  cursor: pointer;
+}
+
+.pose-editor__seed-toggle input {
+  margin: 0;
+  accent-color: #6f8fff;
+}
+
+.pose-editor__seed-hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(232, 232, 240, 0.55);
+}
+
+/* Arm side tabs */
+.pose-editor__arm-tabs {
+  display: flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.pose-editor__arm-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(232, 232, 240, 0.45);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.pose-editor__arm-tab--active {
+  background: rgba(100, 140, 255, 0.18);
+  color: #8cb4ff;
+}
+
+.pose-editor__arm-tab:hover:not(.pose-editor__arm-tab--active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(232, 232, 240, 0.7);
+}
+
+/* Slider sections */
+.pose-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.pose-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pose-slider__label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(232, 232, 240, 0.5);
+}
+
+.pose-slider__value {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  min-width: 44px;
+  text-align: right;
+}
+
+.pose-slider__input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+  cursor: pointer;
+}
+
+.pose-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 2px solid #14142a;
+  cursor: pointer;
+}
+
+.pose-slider__input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 2px solid #14142a;
+  cursor: pointer;
+}
+
+.pose-editor__ball-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pose-editor__ball-hint {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(232, 232, 240, 0.45);
+  font-family: var(--font-mono, monospace);
+}
+
+/* Buttons */
+.pose-editor__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pose-editor__actions .pose-editor__btn { flex: 1; }
+
+.pose-editor__btn {
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8e8f0;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.pose-editor__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.pose-editor__btn:disabled { opacity: 0.3; cursor: default; }
+
+.pose-editor__btn--play {
+  background: rgba(80, 200, 120, 0.15);
+  border-color: rgba(80, 200, 120, 0.35);
+  color: #6bff6b;
+}
+
+.pose-editor__btn--stop {
+  background: rgba(255, 80, 80, 0.15);
+  border-color: rgba(255, 80, 80, 0.35);
+  color: #ff6b6b;
+}
+
+.pose-editor__btn--save {
+  background: rgba(100, 140, 255, 0.12);
+  border-color: rgba(100, 140, 255, 0.3);
+  color: #8cb4ff;
+}
+
+.pose-editor__btn--snap {
+  background: rgba(255, 163, 64, 0.12);
+  border-color: rgba(255, 163, 64, 0.28);
+  color: #ffc06b;
+}
+
+.pose-editor__btn--back {
+  margin-top: auto;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.06);
+  color: rgba(232, 232, 240, 0.4);
+}

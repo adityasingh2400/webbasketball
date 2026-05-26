@@ -3,10 +3,11 @@ import './MainMenu.css';
 
 interface MainMenuProps {
   onStartGame: () => void;
+  onPoseMirror?: () => void;
   highScore: number;
 }
 
-export function MainMenu({ onStartGame, highScore }: MainMenuProps) {
+export function MainMenu({ onStartGame, onPoseMirror, highScore }: MainMenuProps) {
   const [introVisible, setIntroVisible] = useState(false);
 
   useEffect(() => {
@@ -61,6 +62,16 @@ export function MainMenu({ onStartGame, highScore }: MainMenuProps) {
         >
           Play Now
         </button>
+
+        {onPoseMirror ? (
+          <button
+            className={`play-button play-button--secondary ${playReveal.className}`}
+            style={{ ...playReveal.style, marginTop: '10px' }}
+            onClick={onPoseMirror}
+          >
+            Pose Mirror
+          </button>
+        ) : null}
 
         <div className={`menu-footer ${footerReveal.className}`} style={footerReveal.style}>
           <p>✋ Move your hand to control the ball</p>

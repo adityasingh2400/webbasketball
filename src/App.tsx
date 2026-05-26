@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { MainMenu } from './components/MainMenu';
 import GameScreen3D from './components/GameScreen3D';
 import './App.css';
 
-type AppScreen = 'menu' | 'game3d';
+const PoseMirror = lazy(() => import('./components/PoseMirror'));
+
+type AppScreen = 'menu' | 'game3d' | 'posemirror';
 
 const STORAGE_KEY = 'webball_stats';
 
@@ -53,6 +55,7 @@ function App() {
       {screen === 'menu' && (
         <MainMenu
           onStartGame={handleStartGame}
+          onPoseMirror={() => setScreen('posemirror')}
           highScore={stats.highScore}
         />
       )}
@@ -61,6 +64,11 @@ function App() {
           onBack={() => setScreen('menu')}
           onGameEnd={handleGameEnd}
         />
+      )}
+      {screen === 'posemirror' && (
+        <Suspense fallback={<div style={{ background: '#0e0e1a', width: '100vw', height: '100vh' }} />}>
+          <PoseMirror onBack={() => setScreen('menu')} />
+        </Suspense>
       )}
     </div>
   );
